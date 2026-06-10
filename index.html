@@ -143,6 +143,8 @@
     type a word + <b>Lær</b>, then click the floor to teach it.<br>
     Gold words are reflexes it was born with: <b>kom</b>, <b>stop</b>, <b>dygtig</b>.
     Its soul (words, scars, fear, age, melodies) persists in this browser · press <b>x</b> to wipe it.<br>
+    <b>Controllers:</b> trigger = point at a word / the floor · grip (hold) = push ·
+    B/Y (hold) = pull · A/X = dygtig! · stick-press = stop.<br>
     <b>🎤 Lyt</b>: it imitates the melody of your voice — speak while teaching a word and the word
     keeps your melody. <b>Room:</b> run Quest <b>Space Setup</b> and your real furniture becomes
     its resistance field (cyan dots = what it feels).
@@ -183,8 +185,12 @@
   <a-entity id="leftHand"  hand-tracking-controls="hand: left"></a-entity>
   <a-entity id="rightHand" hand-tracking-controls="hand: right"></a-entity>
 
-  <a-entity id="leftCtl"  oculus-touch-controls="hand: left"></a-entity>
-  <a-entity id="rightCtl" oculus-touch-controls="hand: right"></a-entity>
+  <a-entity id="leftCtl"  oculus-touch-controls="hand: left">
+    <a-entity line="start: 0 0 0; end: 0 0 -3.5; color: #6fd0ff; opacity: 0.45"></a-entity>
+  </a-entity>
+  <a-entity id="rightCtl" oculus-touch-controls="hand: right">
+    <a-entity line="start: 0 0 0; end: 0 0 -3.5; color: #6fd0ff; opacity: 0.45"></a-entity>
+  </a-entity>
 </a-scene>
 
 <script>
@@ -524,6 +530,7 @@ AFRAME.registerComponent('raindrop-sim', {
     this._camVec = new THREE.Vector3();
     this._camDir = new THREE.Vector3();
     this._raycaster = new THREE.Raycaster();
+    this._camQuat = new THREE.Quaternion();
     this._ndc = new THREE.Vector2();
     
     // OPTIMIZED: Pre-calculate complex math multipliers
@@ -549,8 +556,14 @@ AFRAME.registerComponent('raindrop-sim', {
     this.restT  = 0;
     this.res    = { l: 0, c: 0, r: 0 };     
     this.hands  = {
-      left:  { active: false, pinching: false, x: 0, z: 0, y: 0 },
-      right: { active: false, pinching: false, x: 0, z: 0, y: 0 }
+      left:   { active: false, pinching: false, x: 0, z: 0, y: 0 },
+      right:  { active: false, pinching: false, x: 0, z: 0, y: 0 },
+      cleft:  { active: false, pinching: false, x: 0, z: 0, y: 0 },  // controller: grip=push, Y-hold=pull
+      cright: { active: false, pinching: false, x: 0, z: 0, y: 0 }   // controller: grip=push, B-hold=pull
+    };
+    this.ctl = {
+      cleft:  { grip: false, pull: false },
+      cright: { grip: false, pull: false }
     };
     this.visAcc = 0;
 
@@ -676,9 +689,33 @@ AFRAME.registerComponent('raindrop-sim', {
 
     ['leftCtl', 'rightCtl'].forEach(function (id) {
       var el = document.getElementById(id);
+      var ck = (id === 'leftCtl') ? 'cleft' : 'cright';
+      // TRIGGER: point-and-click — word plaques first, floor second.
       el.addEventListener('triggerdown', function () {
-        var hit = self._controllerFloorHit(el);
-        if (hit) self._placeGoal(hit.x, hit.z);
+        self.voice.ensure();
+        self._controllerRayAction(el);
+      });
+      // GRIP: high-pressure palm while held.
+      el.addEventListener('gripdown', function () { self.ctl[ck].grip = true; });
+      el.addEventListener('gripup',   function () { self.ctl[ck].grip = false; });
+      // B / Y held: Guiding Current — pull the river to the controller.
+      el.addEventListener('bbuttondown', function () { self.ctl[ck].pull = true; });
+      el.addEventListener('bbuttonup',   function () { self.ctl[ck].pull = false; });
+      el.addEventListener('ybuttondown', function () { self.ctl[ck].pull = true; });
+      el.addEventListener('ybuttonup',   function () { self.ctl[ck].pull = false; });
+      // A / X: praise — "dygtig!"
+      el.addEventListener('abuttondown', function () { self._reflex('dygtig'); });
+      el.addEventListener('xbuttondown', function () { self._reflex('dygtig'); });
+      // Thumbstick press: "stop"
+      el.addEventListener('thumbstickdown', function () { self._reflex('stop'); });
+      // Controllers picked up -> hand-tracking pinches must not stick.
+      el.addEventListener('controllerconnected', function () {
+        self.hands.left.pinching = false;
+        self.hands.right.pinching = false;
+      });
+      el.addEventListener('controllerdisconnected', function () {
+        self.ctl[ck].grip = false; self.ctl[ck].pull = false;
+        self.hands[ck].active = false; self.hands[ck].pinching = false;
       });
     });
 
@@ -865,8 +902,8 @@ AFRAME.registerComponent('raindrop-sim', {
       r += K.scarStrength * Math.exp(-d2 / this.scarS2);
     }
     
-    var hk = ['left', 'right'];
-    for (i = 0; i < 2; i++) {
+    var hk = ['left', 'right', 'cleft', 'cright'];
+    for (i = 0; i < 4; i++) {
       var hnd = this.hands[hk[i]];
       if (hnd.active && !hnd.pinching) {
         d2 = (x - hnd.x) * (x - hnd.x) + (z - hnd.z) * (z - hnd.z);
@@ -955,11 +992,25 @@ AFRAME.registerComponent('raindrop-sim', {
       h.active = plausible;   
       h.x = p.x; h.y = p.y; h.z = p.z;
     }
+    // Controllers: pressure only while a button is held — no accidental shoving.
+    var cids = { cleft: 'leftCtl', cright: 'rightCtl' };
+    for (var ck in cids) {
+      if (!cids.hasOwnProperty(ck)) continue;
+      var ch = this.hands[ck], st = this.ctl[ck];
+      if (!st.grip && !st.pull) { ch.active = false; ch.pinching = false; continue; }
+      var cel = document.getElementById(cids[ck]);
+      if (!cel || !cel.object3D) { ch.active = false; continue; }
+      cel.object3D.getWorldPosition(this._handVec);
+      var cp = this._handVec;
+      ch.active = (Math.abs(cp.x) + Math.abs(cp.y) + Math.abs(cp.z) > 0.001);
+      ch.pinching = st.pull;             // pull-button mimics a pinch (Guiding Current)
+      ch.x = cp.x; ch.y = cp.y; ch.z = cp.z;
+    }
   },
 
   _activePinch: function () {
-    var best = null, bestD = Infinity, keys = ['left', 'right'];
-    for (var i = 0; i < 2; i++) {
+    var best = null, bestD = Infinity, keys = ['left', 'right', 'cleft', 'cright'];
+    for (var i = 0; i < 4; i++) {
       var h = this.hands[keys[i]];
       if (h.active && h.pinching) {
         var dx = h.x - this.pos.x, dz = h.z - this.pos.z;
@@ -971,8 +1022,8 @@ AFRAME.registerComponent('raindrop-sim', {
   },
 
   _handShove: function (dt) {
-    var K = this.K, keys = ['left', 'right'];
-    for (var i = 0; i < 2; i++) {
+    var K = this.K, keys = ['left', 'right', 'cleft', 'cright'];
+    for (var i = 0; i < 4; i++) {
       var h = this.hands[keys[i]];
       if (!h.active || h.pinching) continue;
       var dx = this.pos.x - h.x, dz = this.pos.z - h.z;
@@ -1197,6 +1248,31 @@ AFRAME.registerComponent('raindrop-sim', {
     this._ndc.set((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
     this._raycaster.setFromCamera(this._ndc, cam);
     return this._intersectFloor(this._raycaster.ray.origin, this._raycaster.ray.direction);
+  },
+
+  // Trigger ray: nearest word plaque within the beam, else the floor.
+  _controllerRayAction: function (el) {
+    if (!el || !el.object3D) return;
+    el.object3D.getWorldPosition(this._handVec);
+    var ox = this._handVec.x, oy = this._handVec.y, oz = this._handVec.z;
+    this._camDir.set(0, 0, -1).applyQuaternion(el.object3D.getWorldQuaternion(this._camQuat));
+    var dx = this._camDir.x, dy = this._camDir.y, dz = this._camDir.z;
+
+    var best = null, bestT = Infinity;
+    for (var i = 0; i < this.plaques.length; i++) {
+      var q = this.plaques[i];
+      var vx = q.x - ox, vy = q.y - oy, vz = q.z - oz;
+      var t = vx * dx + vy * dy + vz * dz;
+      if (t < 0.05 || t > 6) continue;
+      var px = vx - t * dx, py = vy - t * dy, pz = vz - t * dz;
+      if (px * px + py * py + pz * pz < 0.12 * 0.12 && t < bestT) { bestT = t; best = q; }
+    }
+    if (best) { this._plaqueAction(best.word); return; }
+
+    var hit = this._controllerFloorHit(el);
+    if (!hit) return;
+    if (this.selectedWord) { this._teachBind(this.selectedWord, hit.x, hit.z); return; }
+    this._placeGoal(hit.x, hit.z);
   },
 
   _controllerFloorHit: function (el) {
@@ -1678,26 +1754,46 @@ AFRAME.registerComponent('raindrop-sim', {
       this._say('…', '#9fb8c8', 1.0, 'low');
       return;
     }
+    var fail = function (detail) {
+      self._say('må jeg ikke lytte?', '#ffb08a', 2.6, 'sad');
+      var v = document.getElementById('v-say');
+      if (v) v.textContent = '🎤 ' + detail;
+      console.warn('[Raindrop ear]', detail);
+    };
+    if (!window.isSecureContext) { fail('kræver HTTPS'); return; }
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      this._say('ingen mikrofon her…', '#ffb08a', 2.5, 'sad');
-      return;
+      fail('mediaDevices mangler i denne browser'); return;
     }
-    this.voice.ensure();
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
-      self.ear.on = true;
-      self.ear.stream = stream;
-      var src = self.voice.ctx.createMediaStreamSource(stream);
-      var an = self.voice.ctx.createAnalyser();
-      an.fftSize = 2048;
-      src.connect(an);                       // analyser only — no feedback loop
-      self.ear.analyser = an;
-      self.ear.buf = new Float32Array(1024);
-      self.ear.voiced = []; self.ear.silence = 0;
-      if (btn) btn.textContent = '🎤 Lyt: TIL';
-      self._say('jeg lytter…', '#9fdcff', 2.2, 'question');
-      self.ear.timer = setInterval(function () { self._earTick(); }, K.earTick);
-    }).catch(function () {
-      self._say('må jeg ikke lytte?', '#ffb08a', 2.5, 'sad');
+    if (!this.voice.ensure()) { fail('AudioContext kunne ikke starte'); return; }
+    navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true }
+    }).then(function (stream) {
+      try {
+        self.ear.on = true;
+        self.ear.stream = stream;
+        var src = self.voice.ctx.createMediaStreamSource(stream);
+        var an = self.voice.ctx.createAnalyser();
+        an.fftSize = 2048;
+        src.connect(an);                     // analyser only — no feedback loop
+        self.ear.analyser = an;
+        self.ear.buf = new Float32Array(1024);
+        self.ear.voiced = []; self.ear.silence = 0;
+        if (btn) btn.textContent = '🎤 Lyt: TIL';
+        self._say('jeg lytter…', '#9fdcff', 2.2, 'question');
+        self.ear.timer = setInterval(function () { self._earTick(); }, K.earTick);
+      } catch (e2) {
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        fail('lyd-graf fejlede: ' + (e2 && e2.name));
+      }
+    }).catch(function (err) {
+      var n = (err && err.name) || 'ukendt fejl';
+      if (n === 'NotAllowedError' || n === 'SecurityError') {
+        fail(n + ' — Quest: Indstillinger → Apps → Tilladelser → Mikrofon → Browser: TIL, og prøv igen (lås-ikonet i adresselinjen → Tilladelser)');
+      } else if (n === 'NotFoundError' || n === 'OverconstrainedError') {
+        fail(n + ' — ingen mikrofon fundet på denne enhed');
+      } else {
+        fail(n);
+      }
     });
   },
 
