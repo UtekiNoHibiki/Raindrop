@@ -131,6 +131,8 @@
     <button id="btn-scatter">Scatter world</button>
     <button id="btn-cool">Cool ❄</button>
     <button id="btn-heat">Heat 🔥</button>
+    <button id="btn-sound">🔊 Lyd: til</button>
+    <button id="btn-mic">🎤 Lyt: fra</button>
     <button id="btn-reset" class="wide">Reset learning (clear scars + primordial kernel)</button>
   </div>
 
@@ -140,14 +142,17 @@
     <b>Desktop:</b> click floor = move goal · click a word = it flows there ·
     type a word + <b>Lær</b>, then click the floor to teach it.<br>
     Gold words are reflexes it was born with: <b>kom</b>, <b>stop</b>, <b>dygtig</b>.
-    Its soul (words, scars, fear, age) persists in this browser · press <b>x</b> to wipe it.
+    Its soul (words, scars, fear, age, melodies) persists in this browser · press <b>x</b> to wipe it.<br>
+    <b>🎤 Lyt</b>: it imitates the melody of your voice — speak while teaching a word and the word
+    keeps your melody. <b>Room:</b> run Quest <b>Space Setup</b> and your real furniture becomes
+    its resistance field (cyan dots = what it feels).
   </p>
 </div>
 
 <a-scene
   raindrop-sim
   renderer="colorManagement: true; antialias: true; alpha: true"
-  webxr="optionalFeatures: hand-tracking, local-floor, hit-test, anchors, plane-detection; referenceSpaceType: local-floor"
+  webxr="optionalFeatures: hand-tracking, local-floor, hit-test, anchors, plane-detection, mesh-detection; referenceSpaceType: local-floor"
   xr-mode-ui="XRMode: ar">
 
   <a-assets></a-assets>
@@ -302,6 +307,126 @@ LanguageValves.prototype.decay = function (dt) {
 };
 LanguageValves.prototype.load = function (obj) { this.words = obj || {}; };
 
+/* =====================================================================
+   RAINDROP VOICE  ·  a water-creature larynx in WebAudio.
+   It does not speak phonemes — it speaks MELODY. Every utterance is a
+   pitch contour sung through a droplet timbre. Babies learn prosody
+   before words; so does Raindrop. Contours heard through the ear are
+   replayed here — it speaks Danish in YOUR melody.
+   ===================================================================== */
+function RaindropVoice() {
+  this.ctx = null;
+  this.master = null;
+}
+RaindropVoice.prototype.ensure = function () {
+  try {
+    if (!this.ctx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.16;
+      this.master.connect(this.ctx.destination);
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    return this.ctx.state === 'running';
+  } catch (e) { return false; }
+};
+// Deterministic contour from a word — each word always sounds like itself.
+RaindropVoice.prototype.seedContour = function (word) {
+  var h = 2166136261, i;
+  for (i = 0; i < word.length; i++) { h ^= word.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  var n = 3 + (h % 3), c = [], x = h;
+  for (i = 0; i < n; i++) { x = (x * 1103515245 + 12345) >>> 0; c.push(0.15 + (x % 1000) / 1430); }
+  return c;
+};
+RaindropVoice.prototype.PRESETS = {
+  happy:    { c: [0.2, 0.5, 0.85, 1.0], d: 520 },
+  pain:     { c: [0.95, 0.55, 0.1],     d: 360 },
+  sad:      { c: [0.6, 0.42, 0.18],     d: 700 },
+  sleep:    { c: [0.4, 0.25, 0.1],      d: 950 },
+  wake:     { c: [0.25, 0.7, 0.55],     d: 480 },
+  question: { c: [0.3, 0.35, 0.5, 0.98],d: 620 },
+  low:      { c: [0.35, 0.2],           d: 420 },
+  babble:   null  // randomized each time
+};
+// spec: preset name | {contour, dur} | {seed: word}. mood: {pitch, rate, vol}
+RaindropVoice.prototype.play = function (spec, mood) {
+  if (!this.ensure()) return;
+  var c, d;
+  if (typeof spec === 'string') {
+    var p = this.PRESETS[spec];
+    if (p) { c = p.c; d = p.d; }
+    else {
+      c = []; var n = 3 + ((Math.random() * 3) | 0);
+      for (var i = 0; i < n; i++) c.push(0.2 + Math.random() * 0.7);
+      d = 380 + Math.random() * 320;
+    }
+  } else if (spec && spec.contour) { c = spec.contour; d = spec.dur || 600; }
+  else if (spec && spec.seed)      { c = this.seedContour(spec.seed); d = 420 + (c.length * 90); }
+  else return;
+  mood = mood || {};
+  var pitch = mood.pitch || 1, rate = mood.rate || 1, vol = (mood.vol == null ? 1 : mood.vol);
+  d = Math.min(1600, Math.max(220, d / rate)) / 1000;
+  var t0 = this.ctx.currentTime + 0.01;
+  var osc = this.ctx.createOscillator();  osc.type = 'sine';
+  var osc2 = this.ctx.createOscillator(); osc2.type = 'triangle';
+  var g = this.ctx.createGain();
+  var g2 = this.ctx.createGain(); g2.gain.value = 0.25;
+  var f = this.ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1600; f.Q.value = 4;
+  var lo = 215 * pitch, hi = 640 * pitch;
+  var fAt = function (v) { return lo + (hi - lo) * Math.max(0, Math.min(1, v)); };
+  osc.frequency.setValueAtTime(fAt(c[0]), t0);
+  osc2.frequency.setValueAtTime(fAt(c[0]) * 2.003, t0);
+  for (var k = 1; k < c.length; k++) {
+    var tk = t0 + (k / (c.length - 1)) * d;
+    osc.frequency.exponentialRampToValueAtTime(Math.max(60, fAt(c[k])), tk);
+    osc2.frequency.exponentialRampToValueAtTime(Math.max(120, fAt(c[k]) * 2.003), tk);
+  }
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(0.9 * vol, t0 + 0.035);   // droplet onset
+  g.gain.setValueAtTime(0.9 * vol, t0 + d * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
+  osc.connect(g); osc2.connect(g2); g2.connect(g);
+  g.connect(f); f.connect(this.master);
+  osc.start(t0); osc2.start(t0);
+  osc.stop(t0 + d + 0.05); osc2.stop(t0 + d + 0.05);
+};
+
+/* Bounded-lag autocorrelation pitch detector — cheap enough for a headset. */
+function detectPitch(buf, sr) {
+  var N = buf.length, rms = 0, i;
+  for (i = 0; i < N; i++) rms += buf[i] * buf[i];
+  if (Math.sqrt(rms / N) < 0.015) return -1;          // silence
+  var minLag = Math.floor(sr / 520), maxLag = Math.min(Math.floor(sr / 70), N - 8);
+  var best = -1, bestV = 0, lag;
+  for (lag = minLag; lag <= maxLag; lag++) {
+    var s = 0;
+    for (i = 0; i < N - lag; i++) s += buf[i] * buf[i + lag];
+    if (s > bestV) { bestV = s; best = lag; }
+  }
+  if (best < 0) return -1;
+  return sr / best;
+}
+/* Normalize a voiced-frame list into a 0..1 melody of 14 points. */
+function contourFrom(frames) {
+  var i, lo = Infinity, hi = -Infinity, logs = [];
+  for (i = 0; i < frames.length; i++) {
+    var l = Math.log2(frames[i]);
+    logs.push(l);
+    if (l < lo) lo = l; if (l > hi) hi = l;
+  }
+  if (hi - lo < 0.25) { var mid = (hi + lo) / 2; lo = mid - 0.125; hi = mid + 0.125; }
+  var out = [], M = 14;
+  for (i = 0; i < M; i++) {
+    var src = logs[Math.min(logs.length - 1, Math.round(i * (logs.length - 1) / (M - 1)))];
+    out.push(Math.round(((src - lo) / (hi - lo)) * 100) / 100);
+  }
+  return out;
+}
+
+
+
 AFRAME.registerComponent('raindrop-sim', {
   init: function () {
     var self = this;
@@ -338,6 +463,18 @@ AFRAME.registerComponent('raindrop-sim', {
       foodGravity:  0.45,   
       guideGravity: 1.40,   
       foodPullGain: 0.50,   
+
+      // --- VOICE & EAR ---
+      voiceVol:     0.16,   // water-voice loudness
+      earTick:      90,     // ms between pitch reads
+      earSilence:   0.55,   // sec of silence that ends an utterance
+      earMinVoiced: 4,      // min voiced frames to count as speech
+
+      // --- REAL WORLD (Quest room scan -> resistance) ---
+      scanEvery:    2000,   // ms between plane/mesh scans
+      realStep:     0.30,   // sample spacing along real edges (m)
+      realCap:      150,    // max real obstacle points
+      realDotCap:   60,     // max visual markers
 
       // --- LANGUAGE / NEWBORN ---
       noveltyCell:  0.35,
@@ -435,6 +572,15 @@ AFRAME.registerComponent('raindrop-sim', {
     this._wasResting = false;
     this.plaques = [];
     this.wordEls = {};
+    this.voice = new RaindropVoice();
+    this.voiceOn = true;
+    this.pendingVoice = null;         // melody waiting for its word
+    this.ear = { on: false, stream: null, analyser: null, timer: null,
+                 buf: null, voiced: [], silence: 0 };
+    this.realMode = false;            // true once the real room is felt
+    this._lastScan = 0;
+    this.realDots = [];
+    this._arHintT = 0;
 
     this.fieldEl = document.getElementById('field');
 
@@ -508,6 +654,8 @@ AFRAME.registerComponent('raindrop-sim', {
       self._showDesktopScaffold(true);
       document.getElementById('hud3d').setAttribute('visible', false);
       self.origin = { x: 0, z: 0 };
+      self.realMode = false;
+      self._clearRealDots();
       self._clearShelf();
       self._scatterWorld();
       self._resetDrop();
@@ -518,6 +666,7 @@ AFRAME.registerComponent('raindrop-sim', {
       var el = document.getElementById(id);
       el.addEventListener('pinchstarted', function (e) {
         self.hands[key].pinching = true;
+        self.voice.ensure();
         self._onPinchPoint(e && e.detail && e.detail.position);
       });
       el.addEventListener('pinchended',   function () { self.hands[key].pinching = false; });
@@ -548,6 +697,16 @@ AFRAME.registerComponent('raindrop-sim', {
     b('btn-cool',    function () { self.temp = Math.max(self.K.tMin, self.temp - 0.3); });
     b('btn-heat',    function () { self.temp = Math.min(self.K.tMax, self.temp + 0.3); });
     b('btn-reset',   function () { self._resetLearning(); });
+    b('btn-sound', function () {
+      self.voiceOn = !self.voiceOn;
+      if (self.voiceOn) self.voice.ensure();
+      var e = document.getElementById('btn-sound');
+      if (e) e.textContent = self.voiceOn ? '🔊 Lyd: til' : '🔇 Lyd: fra';
+    });
+    b('btn-mic', function () { self._toggleEar(); });
+    var unlock = function () { self.voice.ensure(); };
+    window.addEventListener('click', unlock);
+    sceneEl.addEventListener('enter-vr', unlock);
     
     window.addEventListener('keydown', function (e) {
       if (e.key === 'g') self._placeGoal();
@@ -567,6 +726,7 @@ AFRAME.registerComponent('raindrop-sim', {
 
     this._readHands();
     this._lifeTick(dt);      // wonder, babble, quiz, forgetting, autosave, age
+    if (this.el.is('ar-mode')) this._scanReal(time, dt);
 
     if (this.mode === 'resting') {
       this.mom *= 0.85;
@@ -582,7 +742,7 @@ AFRAME.registerComponent('raindrop-sim', {
     this.kernel.metabolize(dt, K.energyDrain, K.restHeal, K.restAt, K.wakeAt);
     if (this.kernel.isResting !== this._wasResting) {
       this._wasResting = this.kernel.isResting;
-      this._say(this._pick(this.kernel.isResting ? BABBLE.sleep : BABBLE.wake), '#9fb8c8', 2.6);
+      this._say(this._pick(this.kernel.isResting ? BABBLE.sleep : BABBLE.wake), '#9fb8c8', 2.6, this.kernel.isResting ? 'sleep' : 'wake');
     }
     if (this.kernel.isResting) {
       this.mom *= 0.90;                    
@@ -740,7 +900,7 @@ AFRAME.registerComponent('raindrop-sim', {
         this.pos.z = o.z + nz * (painDist + 0.005);
 
         this.kernel.registerPain(K.painIntensity);
-        if (Math.random() < 0.8) this._say(this._pick(BABBLE.pain), '#ff8a7a', 1.8);
+        if (Math.random() < 0.8) this._say(this._pick(BABBLE.pain), '#ff8a7a', 1.8, 'pain');
         if (this.kernel.valves.fearResistance > K.fearMax) {
           this.kernel.valves.fearResistance = K.fearMax;
         }
@@ -941,6 +1101,7 @@ AFRAME.registerComponent('raindrop-sim', {
     if (this.obstacleEls) { this.obstacleEls.forEach(function (e) { e.parentNode && e.parentNode.removeChild(e); }); }
     this.obstacleEls = [];
     this.obstacles = [];
+    if (this.realMode) { this._placeGoal(); return; }   // the room IS the maze
     for (i = 0; i < K.obstacleN; i++) {
       var ang = (i / K.obstacleN) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
       var rr = (0.45 + Math.random() * 0.55) * K.playRadius;
@@ -1070,13 +1231,31 @@ AFRAME.registerComponent('raindrop-sim', {
 
   _pick: function (arr) { return arr[(Math.random() * arr.length) | 0]; },
 
-  _say: function (txt, color, dur) {
+  _say: function (txt, color, dur, snd) {
     if (!this.bubbleText) return;
     this.bubbleText.setAttribute('value', txt);
     this.bubbleText.setAttribute('color', color || '#bfe9ff');
     this.bubbleT = dur || 2.4;
     var el = document.getElementById('v-say');
     if (el) el.textContent = '💧 ' + txt;
+    if (this.voiceOn) this.voice.play(snd || 'babble', this._mood());
+  },
+
+  _mood: function () {
+    // Its body IS its voice: hot = higher & quicker, tired = lower & slower.
+    return {
+      pitch: 1 + (this.temp - 0.35) * 0.55,
+      rate:  0.85 + this.temp * 0.5,
+      vol:   0.55 + 0.45 * (this.kernel.internalEnergy / 100)
+    };
+  },
+
+  // Speak a word: in YOUR melody if it learned one, else its own signature chirp.
+  _speakWord: function (word) {
+    if (!this.voiceOn) return;
+    var w = this.lang.words[word];
+    if (w && w.voice) this.voice.play({ contour: w.voice.c, dur: w.voice.d }, this._mood());
+    else this.voice.play({ seed: word }, this._mood());
   },
 
   _renderBubble: function (dt) {
@@ -1178,10 +1357,11 @@ AFRAME.registerComponent('raindrop-sim', {
       }
       this.quiz.options = opts;
       this.restT = K.quizTime + 1;     // it waits there, looking at you
-      this._say('hvad er det her?', '#ffd27a', K.quizTime);
+      this._say('hvad er det her?', '#ffd27a', K.quizTime, 'question');
       this._refreshChips(); this._refreshShelf();
     } else if (this.wordGoal) {
-      this._say('«' + this.wordGoal + '»!', '#9ff0cd', 2.8);
+      this._say('«' + this.wordGoal + '»!', '#9ff0cd', 2.8, 'happy');
+      this._speakWord(this.wordGoal);
       this.lang.strengthen(this.wordGoal, 0.15);          // practice deepens the channel
       this.lastWord = { w: this.wordGoal, t: Date.now() };
       this.wordGoal = null;
@@ -1205,13 +1385,15 @@ AFRAME.registerComponent('raindrop-sim', {
     var q = this.quiz;
     if (!q || q.phase !== 'ask') return;
     if (word === q.word) {
-      this._say('JA! «' + word + '»!', '#7dffb0', 3.0);
+      this._say('JA! «' + word + '»!', '#7dffb0', 3.0, 'happy');
+      this._speakWord(word);
       this.lang.strengthen(word, 0.25);
       this.lang.words[word].ok++;
       this.kernel.feed(10);
       this.temp = Math.max(this.K.tMin, this.temp - 0.2);   // correct answers are soothing
     } else {
-      this._say('næh — det er «' + q.word + '»', '#ffb08a', 3.6);
+      this._say('næh — det er «' + q.word + '»', '#ffb08a', 3.6, 'sad');
+      this._speakWord(q.word);
       this.lang.strengthen(q.word, 0.05);
     }
     this._endQuiz();
@@ -1235,21 +1417,22 @@ AFRAME.registerComponent('raindrop-sim', {
         this.goal = { x: u.x + (this.pos.x - u.x) * 0.25, z: u.z + (this.pos.z - u.z) * 0.25 };
         this.bestD = Infinity; this.stuckT = 0; this.mode = 'seeking';
         this.temp = Math.min(this.K.tMax, this.temp + 0.1);   // excited to be called
-        this._say('kommer!', '#ffd27a', 2.2);
+        this._say('kommer!', '#ffd27a', 2.2, 'happy');
       }
     } else if (word === 'stop') {
       this.mom = 0; this.wordGoal = null;
       this.mode = 'resting'; this.restT = 2.0;
-      this._say('stopper.', '#ffd27a', 2.0);
+      this._say('stopper.', '#ffd27a', 2.0, 'low');
     } else if (word === 'dygtig') {
       this.kernel.feed(15);
       this.temp = Math.max(this.K.tMin, this.temp - 0.22);
       // Praise reinforces whatever word just happened — Hebbian to the bone.
       if (this.lastWord && Date.now() - this.lastWord.t < 10000) {
         this.lang.strengthen(this.lastWord.w, 0.2);
-        this._say('glad! ♥ «' + this.lastWord.w + '»!', '#7dffb0', 2.8);
+        this._say('glad! ♥ «' + this.lastWord.w + '»!', '#7dffb0', 2.8, 'happy');
+        this._speakWord(this.lastWord.w);
       } else {
-        this._say('glad! ♥', '#7dffb0', 2.4);
+        this._say('glad! ♥', '#7dffb0', 2.4, 'happy');
       }
     }
   },
@@ -1263,7 +1446,8 @@ AFRAME.registerComponent('raindrop-sim', {
     this.goal = { x: w.x, z: w.z };
     this.bestD = Infinity; this.stuckT = 0;
     this.mode = 'seeking'; this.restT = 0;
-    this._say('«' + word + '»?', '#9fdcff', 2.0);
+    this._say('«' + word + '»?', '#9fdcff', 2.0, 'question');
+    this._speakWord(word);
   },
 
   // Teaching: bind an armed word to a place. One Hebbian carve.
@@ -1274,7 +1458,12 @@ AFRAME.registerComponent('raindrop-sim', {
     this.selectedWord = null;
     this.kernel.feed(4);                                   // learning feels good
     this.temp = Math.min(this.K.tMax, this.temp + 0.08);   // a little thrill
-    this._say('«' + word + '» … lært!', '#7dffb0', 2.8);
+    if (this.pendingVoice && this.pendingVoice.word === word) {
+      this.lang.words[word].voice = { c: this.pendingVoice.c, d: this.pendingVoice.d };
+      this.pendingVoice = null;
+    }
+    this._say('«' + word + '» … lært!', '#7dffb0', 2.8, 'happy');
+    this._speakWord(word);                                 // it repeats its new word
     this._refreshChips(); this._refreshShelf();
     this._saveSoul();
   },
@@ -1471,7 +1660,211 @@ AFRAME.registerComponent('raindrop-sim', {
         born = false;
       }
     } catch (e) { born = true; }
-    this._say(born ? 'hej verden! ✨' : 'hej igen! 💧', '#9fdcff', 4.0);
+    this._say(born ? 'hej verden! ✨' : 'hej igen! 💧', '#9fdcff', 4.0, 'happy');
+  },
+
+  /* ════════════════ THE EAR ════════════════
+     Mic -> pitch contour -> imitation. It hears MELODY, not phonemes —
+     prosody first, exactly how infants enter language. */
+  _toggleEar: function () {
+    var self = this, K = this.K;
+    var btn = document.getElementById('btn-mic');
+    if (this.ear.on) {
+      this.ear.on = false;
+      if (this.ear.timer) clearInterval(this.ear.timer);
+      if (this.ear.stream) this.ear.stream.getTracks().forEach(function (t) { t.stop(); });
+      this.ear.stream = null; this.ear.analyser = null;
+      if (btn) btn.textContent = '🎤 Lyt: fra';
+      this._say('…', '#9fb8c8', 1.0, 'low');
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      this._say('ingen mikrofon her…', '#ffb08a', 2.5, 'sad');
+      return;
+    }
+    this.voice.ensure();
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      self.ear.on = true;
+      self.ear.stream = stream;
+      var src = self.voice.ctx.createMediaStreamSource(stream);
+      var an = self.voice.ctx.createAnalyser();
+      an.fftSize = 2048;
+      src.connect(an);                       // analyser only — no feedback loop
+      self.ear.analyser = an;
+      self.ear.buf = new Float32Array(1024);
+      self.ear.voiced = []; self.ear.silence = 0;
+      if (btn) btn.textContent = '🎤 Lyt: TIL';
+      self._say('jeg lytter…', '#9fdcff', 2.2, 'question');
+      self.ear.timer = setInterval(function () { self._earTick(); }, K.earTick);
+    }).catch(function () {
+      self._say('må jeg ikke lytte?', '#ffb08a', 2.5, 'sad');
+    });
+  },
+
+  _earTick: function () {
+    var K = this.K, ear = this.ear;
+    if (!ear.on || !ear.analyser) return;
+    ear.analyser.getFloatTimeDomainData(ear.buf);
+    var f = detectPitch(ear.buf, this.voice.ctx.sampleRate);
+    var step = K.earTick / 1000;
+    if (f > 0) {
+      ear.voiced.push(f);
+      ear.silence = 0;
+    } else if (ear.voiced.length) {
+      ear.silence += step;
+      if (ear.silence >= K.earSilence) {
+        var frames = ear.voiced;
+        ear.voiced = []; ear.silence = 0;
+        if (frames.length >= K.earMinVoiced) {
+          this._onHeard(contourFrom(frames), frames.length * K.earTick);
+        }
+      }
+    }
+  },
+
+  // A melody arrived. Bind it, or babble it back.
+  _onHeard: function (c, durMs) {
+    var self = this;
+    var echo = function () { self.voice.play({ contour: c, dur: durMs }, self._mood()); };
+    if (this.selectedWord) {
+      // You spoke while teaching: this word will forever carry your melody.
+      this.pendingVoice = { word: this.selectedWord, c: c, d: Math.min(1400, Math.max(380, durMs)) };
+      this._say('♪ «' + this.selectedWord + '»…', '#9fdcff', 2.2);
+      setTimeout(echo, 300);
+    } else if (this.lastWord && Date.now() - this.lastWord.t < 8000) {
+      // Spoken right after a word event: attach the melody to that word.
+      var w = this.lang.words[this.lastWord.w];
+      if (w) {
+        w.voice = { c: c, d: Math.min(1400, Math.max(380, durMs)) };
+        this.lang.strengthen(this.lastWord.w, 0.1);
+        this._say('♪ «' + this.lastWord.w + '»!', '#7dffb0', 2.4);
+        setTimeout(echo, 300);
+        this._saveSoul();
+      }
+    } else {
+      // Pure imitation play — it babbles your prosody back.
+      this._say(this._pick(['…?', '♪!', 'øh?', 'sådan?']), '#bfe9ff', 1.8);
+      setTimeout(echo, 350);
+    }
+  },
+
+  /* ════════════════ THE REAL ROOM ════════════════
+     Quest Space-Setup planes & room mesh -> resistance points.
+     The sofa finally pushes back. */
+  _scanReal: function (time, dt) {
+    var K = this.K;
+    this._arHintT += dt;
+    if (time - this._lastScan < K.scanEvery) return;
+    this._lastScan = time;
+    var frame = this.el.frame;
+    var xr = this.el.renderer && this.el.renderer.xr;
+    if (!frame || !xr) return;
+    var ref = null;
+    try { ref = xr.getReferenceSpace(); } catch (e) {}
+    if (!ref) return;
+
+    var pts = [], self = this;
+    var push = function (x, z) { if (pts.length < K.realCap) pts.push({ x: x, z: z }); };
+    var edge = function (ax, az, bx, bz) {
+      var dx = bx - ax, dz = bz - az;
+      var len = Math.sqrt(dx * dx + dz * dz);
+      var n = Math.max(1, Math.ceil(len / K.realStep));
+      for (var i = 0; i <= n; i++) push(ax + dx * (i / n), az + dz * (i / n));
+    };
+    var xform = function (m, p) {
+      return {
+        x: m[0] * p.x + m[4] * p.y + m[8]  * p.z + m[12],
+        y: m[1] * p.x + m[5] * p.y + m[9]  * p.z + m[13],
+        z: m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14]
+      };
+    };
+
+    // Planes: walls, tables, sofa tops — from Space Setup.
+    if (frame.detectedPlanes) {
+      frame.detectedPlanes.forEach(function (plane) {
+        var lab = plane.semanticLabel || '';
+        if (lab === 'floor' || lab === 'ceiling') return;
+        var pose = null;
+        try { pose = frame.getPose(plane.planeSpace, ref); } catch (e) {}
+        if (!pose || !plane.polygon || !plane.polygon.length) return;
+        var m = pose.transform.matrix;
+        var poly = plane.polygon, world = [], i;
+        for (i = 0; i < poly.length; i++) {
+          var w = xform(m, poly[i]);
+          if (w.y > 2.1) return;             // ceiling fixtures: ignore whole plane
+          world.push(w);
+        }
+        for (i = 0; i < world.length; i++) {
+          var a = world[i], b = world[(i + 1) % world.length];
+          edge(a.x, a.z, b.x, b.z);
+        }
+      });
+    }
+    // Room mesh fallback: sample vertices at drop height.
+    if (pts.length < 6 && frame.detectedMeshes) {
+      frame.detectedMeshes.forEach(function (mesh) {
+        var pose = null;
+        try { pose = frame.getPose(mesh.meshSpace, ref); } catch (e) {}
+        if (!pose || !mesh.vertices) return;
+        var m = pose.transform.matrix, v = mesh.vertices;
+        var count = v.length / 3;
+        var stride = Math.max(1, Math.floor(count / 260)) * 3;
+        for (var i = 0; i < v.length; i += stride) {
+          var w = xform(m, { x: v[i], y: v[i + 1], z: v[i + 2] });
+          if (w.y > 0.06 && w.y < 1.5) push(w.x, w.z);
+        }
+      });
+    }
+
+    if (pts.length >= 6) {
+      // Thin to a 0.18 m grid so the field stays cheap.
+      var grid = {}, thin = [];
+      for (var i = 0; i < pts.length; i++) {
+        var k = Math.round(pts[i].x / 0.18) + ',' + Math.round(pts[i].z / 0.18);
+        if (!grid[k]) { grid[k] = 1; thin.push(pts[i]); }
+      }
+      var first = !this.realMode;
+      this.realMode = true;
+      this.obstacles = thin;
+      if (first) {
+        // The virtual reeds dissolve — the room takes over.
+        if (this.obstacleEls) this.obstacleEls.forEach(function (e) { e.parentNode && e.parentNode.removeChild(e); });
+        this.obstacleEls = [];
+        this._say('jeg kan mærke rummet!', '#7dffb0', 3.0, 'happy');
+      }
+      this._drawRealDots(thin);
+    } else if (!this.realMode && this._arHintT > 7 && this._arHintT < 7.2) {
+      this._say('jeg kan ikke mærke rummet… (Space Setup?)', '#ffb08a', 4.0, 'sad');
+    }
+  },
+
+  _drawRealDots: function (pts) {
+    var K = this.K, i;
+    var n = Math.min(pts.length, K.realDotCap);
+    while (this.realDots.length < n) {
+      this.realDots.push(this._make('a-circle', {
+        radius: 0.025, rotation: '-90 0 0',
+        material: 'shader: flat; color: #46c8d6; opacity: 0.30; transparent: true; side: double'
+      }));
+    }
+    var step = pts.length / n;
+    for (i = 0; i < this.realDots.length; i++) {
+      if (i < n) {
+        var p = pts[Math.floor(i * step)];
+        this.realDots[i].object3D.position.set(p.x, 0.008, p.z);
+        this.realDots[i].object3D.visible = true;
+      } else {
+        this.realDots[i].object3D.visible = false;
+      }
+    }
+  },
+
+  _clearRealDots: function () {
+    for (var i = 0; i < this.realDots.length; i++) {
+      var d = this.realDots[i];
+      if (d.parentNode) d.parentNode.removeChild(d);
+    }
+    this.realDots = [];
   },
 
   _make: function (tag, attrs) {
