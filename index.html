@@ -69,6 +69,24 @@
   .hint{font-size:9.5px; color:var(--muted); margin-top:11px; line-height:1.5; border-top:1px solid var(--hair); padding-top:9px}
   .drop{filter:drop-shadow(0 0 6px rgba(80,180,255,.8))}
   @media (prefers-reduced-motion: reduce){ .bar > i{transition:none} }
+  /* ── language / newborn UI ── */
+  #chips{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px}
+  .chip{font-family:var(--mono); font-size:10px; color:#9fc4dd; cursor:pointer;
+    background:#0d2233; border:1px solid #2c4a63; border-radius:11px; padding:3px 8px;
+    transition:background .12s}
+  .chip:hover{background:#15324a}
+  .chip.innate{border-color:#ffd27a; color:#ffd27a}
+  .chip.known{border-color:#46d6a0; color:#9ff0cd}
+  .chip.armed{background:#1d3a52; outline:1.5px solid #6fd0ff}
+  .chip.quiz{outline:2px solid #ffd27a; animation:qpulse 0.9s infinite alternate}
+  @keyframes qpulse{from{background:#0d2233}to{background:#3a2f10}}
+  #wordrow{display:flex; gap:6px; margin-top:7px}
+  #word-in{flex:1; font-family:var(--mono); font-size:10.5px; color:var(--text);
+    background:#0a1c2b; border:1px solid var(--hair); border-radius:8px; padding:6px 8px; min-width:0}
+  #word-in:focus{outline:1.5px solid var(--cool)}
+  #btn-word{font-family:var(--mono); font-size:10.5px; color:#0a1622; font-weight:700; cursor:pointer;
+    background:#6fd0ff; border:none; border-radius:8px; padding:6px 11px}
+  #v-say{font-size:10px; color:#9fdcff; min-height:14px; margin-top:6px; font-style:italic}
 </style>
 </head>
 <body>
@@ -100,6 +118,14 @@
 
   <div class="row" style="margin-top:11px"><span>Scars burned</span><b id="v-scars">0</b></div>
 
+  <div class="label">Sprog · ordforråd <span id="v-age" style="float:right; color:#7fa6bf"></span></div>
+  <div id="chips"></div>
+  <div id="wordrow">
+    <input id="word-in" placeholder="nyt dansk ord…" maxlength="18" autocomplete="off">
+    <button id="btn-word">Lær</button>
+  </div>
+  <div id="v-say"></div>
+
   <div id="btns">
     <button id="btn-goal">New goal</button>
     <button id="btn-scatter">Scatter world</button>
@@ -109,8 +135,12 @@
   </div>
 
   <p class="hint">
-    <b>Quest:</b> tap <b>Enter AR</b> · open hand = push, pinch = pull.<br>
-    <b>Desktop:</b> click the floor to move the goal.
+    <b>Quest:</b> tap <b>AR</b> · open hand = push, pinch = pull · pinch a word plaque,
+    then pinch a spot on the floor to teach it that word.<br>
+    <b>Desktop:</b> click floor = move goal · click a word = it flows there ·
+    type a word + <b>Lær</b>, then click the floor to teach it.<br>
+    Gold words are reflexes it was born with: <b>kom</b>, <b>stop</b>, <b>dygtig</b>.
+    Its soul (words, scars, fear, age) persists in this browser · press <b>x</b> to wipe it.
   </p>
 </div>
 
@@ -225,6 +255,53 @@ RaindropKernel.prototype.feed = function (nourishment) {
   this.internalEnergy = Math.min(100.0, this.internalEnergy + nourishment);
 };
 
+/* =====================================================================
+   THE NEWBORN'S VOICE  ·  pre-linguistic Danish babble.
+   ===================================================================== */
+var BABBLE = {
+  idle:   ['ooh!', 'blub~', 'iiih!', 'spændende!', 'hvad er DET?', 'wiii~', 'mere verden!', 'hmm?', 'flyde flyde…'],
+  wonder: ['nyt sted!', 'ooh!', 'her er nyt!', 'spændende!'],
+  found:  ['nam!', 'fundet!', 'mere!'],
+  pain:   ['av!', 'auv!!', 'uh-uh…'],
+  sleep:  ['træt…', 'zzz…'],
+  wake:   ['frisk igen!', 'mere verden!']
+};
+
+/* =====================================================================
+   LANGUAGE VALVES  ·  Hebbian word <-> place association.
+   No dataset, no backprop. A word heard near an experience carves a
+   channel, exactly like a scar — but a pleasant one. Words are remote
+   pressure: hearing one reshapes the resistance field from afar.
+   ===================================================================== */
+function LanguageValves() {
+  this.words = {};   // word -> { x, z, s: strength 0..1, n: times taught, ok: quiz wins }
+}
+LanguageValves.prototype.learn = function (word, x, z) {
+  var w = this.words[word] || { x: x, z: z, s: 0, n: 0, ok: 0 };
+  w.x = x; w.z = z;
+  w.s = Math.min(1, w.s + (1 - w.s) * 0.4);   // Hebbian: repetition deepens the channel
+  w.n++;
+  this.words[word] = w;
+  return w;
+};
+LanguageValves.prototype.strengthen = function (word, amt) {
+  var w = this.words[word];
+  if (w) w.s = Math.min(1, w.s + amt);
+};
+LanguageValves.prototype.anchored = function () {
+  var out = [], k;
+  for (k in this.words) if (this.words.hasOwnProperty(k) && this.words[k].s > 0.12) out.push(k);
+  return out;
+};
+LanguageValves.prototype.decay = function (dt) {
+  for (var k in this.words) {
+    if (!this.words.hasOwnProperty(k)) continue;
+    var w = this.words[k];
+    if (w.s > 0.15) w.s = Math.max(0.15, w.s - 0.0006 * dt);
+  }
+};
+LanguageValves.prototype.load = function (obj) { this.words = obj || {}; };
+
 AFRAME.registerComponent('raindrop-sim', {
   init: function () {
     var self = this;
@@ -262,7 +339,15 @@ AFRAME.registerComponent('raindrop-sim', {
       guideGravity: 1.40,   
       foodPullGain: 0.50,   
 
-      energyDrain:  0.55,   
+      // --- LANGUAGE / NEWBORN ---
+      noveltyCell:  0.35,
+      wonderHeat:   0.05,
+      babbleMin:    5, babbleMax: 11,
+      quizEvery:    40,
+      quizTime:     18,
+      saveEvery:    12,
+
+      energyDrain:  0.55,
       restHeal:     9.0,    
       restAt:       12,     
       wakeAt:       96,     
@@ -332,6 +417,25 @@ AFRAME.registerComponent('raindrop-sim', {
     };
     this.visAcc = 0;
 
+    // ── NEWBORN STATE ──
+    this.lang = new LanguageValves();
+    this.innateWords  = ['kom', 'stop', 'dygtig'];
+    this.starterWords = ['vand', 'sofa', 'bord', 'lampe', 'dør', 'vindue', 'mad', 'hjem'];
+    this.customWords  = [];
+    this.soul    = { birth: Date.now() };
+    this.ageDays = 0;
+    this.selectedWord = null; this.selT = 0;
+    this.wordGoal = null;
+    this.lastWord = null;
+    this.quiz = null; this.quizT = 0;
+    this.babbleT = 3;
+    this.saveT = 12;
+    this.visited = {}; this.visitedN = 0;
+    this.bubbleT = 0; this._bubO = -1;
+    this._wasResting = false;
+    this.plaques = [];
+    this.wordEls = {};
+
     this.fieldEl = document.getElementById('field');
 
     this.dropEl = this._make('a-sphere', {
@@ -357,6 +461,23 @@ AFRAME.registerComponent('raindrop-sim', {
     this.whiskerC = this._make('a-entity', { line: 'start: 0 0 0; end: 0 0 0; color: #46d6a0; opacity: 0.7' });
     this.whiskerR = this._make('a-entity', { line: 'start: 0 0 0; end: 0 0 0; color: #46d6a0; opacity: 0.55' });
 
+    // Speech bubble — the newborn's voice, floating above the drop.
+    this.bubbleEl = this._make('a-entity', {});
+    this.bubblePlane = document.createElement('a-plane');
+    this.bubblePlane.setAttribute('width', '0.40');
+    this.bubblePlane.setAttribute('height', '0.10');
+    this.bubblePlane.setAttribute('material', 'shader: flat; color: #04101a; opacity: 0; transparent: true; side: double');
+    this.bubbleEl.appendChild(this.bubblePlane);
+    this.bubbleText = document.createElement('a-text');
+    this.bubbleText.setAttribute('value', '');
+    this.bubbleText.setAttribute('color', '#bfe9ff');
+    this.bubbleText.setAttribute('align', 'center');
+    this.bubbleText.setAttribute('width', '1.1');
+    this.bubbleText.setAttribute('font', 'dejavu');
+    this.bubbleText.setAttribute('position', '0 0 0.004');
+    this.bubbleText.setAttribute('opacity', '0');
+    this.bubbleEl.appendChild(this.bubbleText);
+
     for (var t = 0; t < this.K.trailCap; t++) {
       var d = this._make('a-circle', {
         radius: 0.045, rotation: '-90 0 0',
@@ -366,21 +487,28 @@ AFRAME.registerComponent('raindrop-sim', {
       this.trail.push({ el: d, op: 0 });
     }
 
-    this._scatterWorld();      
+    this._scatterWorld();
     this._resetDrop();
+    this._loadSoul();          // wake up: remembers its words, scars, fear, age
+    this._initLanguageUI();
 
     var sceneEl = this.el;
+    window.addEventListener('beforeunload', function () { self._saveSoul(); });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') self._saveSoul();
+    });
 
     sceneEl.addEventListener('enter-vr', function () {
       var ar = sceneEl.is('ar-mode');
       self._showDesktopScaffold(!ar);
       document.getElementById('hud3d').setAttribute('visible', ar);
-      if (ar) self._anchorInFront();
+      if (ar) { self._anchorInFront(); self._buildShelf(); }
     });
     sceneEl.addEventListener('exit-vr', function () {
       self._showDesktopScaffold(true);
       document.getElementById('hud3d').setAttribute('visible', false);
       self.origin = { x: 0, z: 0 };
+      self._clearShelf();
       self._scatterWorld();
       self._resetDrop();
     });
@@ -388,7 +516,10 @@ AFRAME.registerComponent('raindrop-sim', {
     ['leftHand', 'rightHand'].forEach(function (id) {
       var key = (id === 'leftHand') ? 'left' : 'right';
       var el = document.getElementById(id);
-      el.addEventListener('pinchstarted', function () { self.hands[key].pinching = true; });
+      el.addEventListener('pinchstarted', function (e) {
+        self.hands[key].pinching = true;
+        self._onPinchPoint(e && e.detail && e.detail.position);
+      });
       el.addEventListener('pinchended',   function () { self.hands[key].pinching = false; });
       el.addEventListener('controllerconnected',    function () { self.hands[key].active = true; });
       el.addEventListener('controllerdisconnected', function () { self.hands[key].active = false; self.hands[key].pinching = false; });
@@ -406,7 +537,9 @@ AFRAME.registerComponent('raindrop-sim', {
       if (sceneEl.is('vr-mode') || sceneEl.is('ar-mode')) return;
       if (ev.target.closest('#hud')) return;
       var hit = self._screenFloorHit(ev.clientX, ev.clientY);
-      if (hit) self._placeGoal(hit.x, hit.z);
+      if (!hit) return;
+      if (self.selectedWord) { self._teachBind(self.selectedWord, hit.x, hit.z); return; }
+      self._placeGoal(hit.x, hit.z);
     });
 
     var b = function (id, fn) { var e = document.getElementById(id); if (e) e.addEventListener('click', fn); };
@@ -420,6 +553,10 @@ AFRAME.registerComponent('raindrop-sim', {
       if (e.key === 'g') self._placeGoal();
       if (e.key === 'r') self._resetLearning();
       if (e.key === 's') { self._scatterWorld(); self._resetDrop(); }
+      if (e.key === 'x') {
+        try { localStorage.removeItem('raindrop_soul_v1'); } catch (err) {}
+        location.reload();
+      }
     });
   },
 
@@ -429,6 +566,7 @@ AFRAME.registerComponent('raindrop-sim', {
     if (dt <= 0) return;
 
     this._readHands();
+    this._lifeTick(dt);      // wonder, babble, quiz, forgetting, autosave, age
 
     if (this.mode === 'resting') {
       this.mom *= 0.85;
@@ -442,6 +580,10 @@ AFRAME.registerComponent('raindrop-sim', {
     }
 
     this.kernel.metabolize(dt, K.energyDrain, K.restHeal, K.restAt, K.wakeAt);
+    if (this.kernel.isResting !== this._wasResting) {
+      this._wasResting = this.kernel.isResting;
+      this._say(this._pick(this.kernel.isResting ? BABBLE.sleep : BABBLE.wake), '#9fb8c8', 2.6);
+    }
     if (this.kernel.isResting) {
       this.mom *= 0.90;                    
       this._heal(dt);
@@ -539,6 +681,7 @@ AFRAME.registerComponent('raindrop-sim', {
       this.mode = 'resting';
       this.restT = K.restDuration;
       this.temp = Math.max(K.tMin, this.temp * 0.4);
+      this._onArrived();
     }
 
     this._dropTrail();
@@ -597,6 +740,7 @@ AFRAME.registerComponent('raindrop-sim', {
         this.pos.z = o.z + nz * (painDist + 0.005);
 
         this.kernel.registerPain(K.painIntensity);
+        if (Math.random() < 0.8) this._say(this._pick(BABBLE.pain), '#ff8a7a', 1.8);
         if (this.kernel.valves.fearResistance > K.fearMax) {
           this.kernel.valves.fearResistance = K.fearMax;
         }
@@ -683,6 +827,7 @@ AFRAME.registerComponent('raindrop-sim', {
   },
 
   _render: function (dt, time) {
+    this._renderBubble(dt);
     var K = this.K, y = K.hoverY;
     var t = time * 0.001;
 
@@ -752,6 +897,11 @@ AFRAME.registerComponent('raindrop-sim', {
     set('v-dist', dist.toFixed(2) + ' m');
     set('v-temp', this.temp.toFixed(2));
     set('v-scars', '' + this.scars.length);
+    var ae = document.getElementById('v-age');
+    if (ae) {
+      ae.textContent = (this.ageDays < 1 ? 'nyfødt ✨' : this.ageDays.toFixed(1) + ' dage') +
+                       ' · ' + this.lang.anchored().length + ' ord';
+    }
     set('v-mood', hot > 0.6 ? 'exploring (Truth)' : (hot > 0.3 ? 'restless' : 'crystallising (Harmony)'));
 
     var moodColor = this._lerpColorCss(0x2f7fd6, 0xff7a59, hot);
@@ -771,7 +921,7 @@ AFRAME.registerComponent('raindrop-sim', {
         '  t=' + this.temp.toFixed(2) + '\n' +
         'fear ' + this.kernel.valves.fearResistance.toFixed(2) +
         '  energy ' + Math.round(this.kernel.internalEnergy) + '%\n' +
-        'scars ' + this.scars.length);
+        'scars ' + this.scars.length + '   ord ' + this.lang.anchored().length);
     }
   },
 
@@ -832,6 +982,8 @@ AFRAME.registerComponent('raindrop-sim', {
 
   _placeGoal: function (x, z) {
     var K = this.K;
+    this.wordGoal = null;
+    if (this.quiz && this.quiz.phase === 'travel') this.quiz = null;
     if (typeof x === 'number' && typeof z === 'number') {
       this.goal = { x: x, z: z };
     } else {
@@ -912,6 +1064,414 @@ AFRAME.registerComponent('raindrop-sim', {
     var l = document.getElementById('floor-lines');
     if (g) g.setAttribute('visible', show);
     if (l) l.setAttribute('visible', show);
+  },
+
+  /* ════════════════ THE NEWBORN ════════════════ */
+
+  _pick: function (arr) { return arr[(Math.random() * arr.length) | 0]; },
+
+  _say: function (txt, color, dur) {
+    if (!this.bubbleText) return;
+    this.bubbleText.setAttribute('value', txt);
+    this.bubbleText.setAttribute('color', color || '#bfe9ff');
+    this.bubbleT = dur || 2.4;
+    var el = document.getElementById('v-say');
+    if (el) el.textContent = '💧 ' + txt;
+  },
+
+  _renderBubble: function (dt) {
+    if (!this.bubbleEl) return;
+    if (this.bubbleT > 0) {
+      this.bubbleT -= dt;
+      var o = this._clamp01(this.bubbleT / 0.4);
+      this.bubbleEl.object3D.position.set(
+        this.pos.x,
+        this.dropEl.object3D.position.y + 0.30,
+        this.pos.z);
+      var cam = this.el.camera;
+      if (cam) {
+        cam.getWorldPosition(this._camVec);
+        this.bubbleEl.object3D.rotation.set(0,
+          Math.atan2(this._camVec.x - this.pos.x, this._camVec.z - this.pos.z), 0);
+      }
+      if (o !== this._bubO) {
+        this._bubO = o;
+        this.bubbleText.setAttribute('opacity', o);
+        this.bubblePlane.setAttribute('material', 'opacity', 0.55 * o);
+      }
+    } else if (this._bubO !== 0) {
+      this._bubO = 0;
+      this.bubbleText.setAttribute('opacity', 0);
+      this.bubblePlane.setAttribute('material', 'opacity', 0);
+    }
+  },
+
+  // One heartbeat of childhood: wonder, babble, quizzes, forgetting, autosave.
+  _lifeTick: function (dt) {
+    var K = this.K;
+    this.ageDays = (Date.now() - this.soul.birth) / 86400000;
+    var baby = Math.max(0.3, 1 - this.ageDays / 30);   // newborn-ness fades over a month
+
+    this.lang.decay(dt);
+
+    if (this.selectedWord) {
+      this.selT -= dt;
+      if (this.selT <= 0) { this.selectedWord = null; this._refreshChips(); this._refreshShelf(); }
+    }
+
+    // TRUTH made visceral: a never-visited cell is a spark of joy.
+    if (this.mode === 'seeking' && !this.kernel.isResting) {
+      var key = Math.round((this.pos.x - this.origin.x) / K.noveltyCell) + ',' +
+                Math.round((this.pos.z - this.origin.z) / K.noveltyCell);
+      if (!this.visited[key]) {
+        this.visited[key] = 1;
+        if (++this.visitedN > 900) { this.visited = {}; this.visitedN = 0; }
+        this.temp = Math.min(K.tMax, this.temp + K.wonderHeat * baby);
+        if (Math.random() < 0.16 * baby) this._say(this._pick(BABBLE.wonder), '#9fdcff');
+      }
+    }
+
+    // Idle babble — newborns narrate everything.
+    this.babbleT -= dt;
+    if (this.babbleT <= 0) {
+      this.babbleT = (K.babbleMin + Math.random() * (K.babbleMax - K.babbleMin)) / (0.45 + baby);
+      if (this.mode === 'seeking' && !this.quiz && !this.kernel.isResting && this.bubbleT <= 0) {
+        this._say(this._pick(BABBLE.idle), '#bfe9ff');
+      }
+    }
+
+    // Quiz lifecycle.
+    if (this.quiz && this.quiz.phase === 'ask') {
+      this.quiz.t -= dt;
+      if (this.quiz.t <= 0) {
+        this._say('det er «' + this.quiz.word + '»', '#ffd27a', 3.4);
+        this.lang.strengthen(this.quiz.word, 0.05);
+        this._endQuiz();
+      }
+    } else if (!this.quiz && !this.wordGoal) {
+      this.quizT += dt;
+      if (this.quizT > K.quizEvery && this.temp < 0.45 &&
+          this.mode === 'seeking' && this.kernel.internalEnergy > 35) {
+        var known = this.lang.anchored();
+        if (known.length >= 3) this._startQuiz(known);
+      }
+    }
+
+    this.saveT -= dt;
+    if (this.saveT <= 0) { this.saveT = K.saveEvery; this._saveSoul(); }
+  },
+
+  // Arrived at the current goal — was it a word, a quiz site, or just lunch?
+  _onArrived: function () {
+    var K = this.K;
+    if (this.quiz && this.quiz.phase === 'travel') {
+      this.quiz.phase = 'ask';
+      this.quiz.t = K.quizTime;
+      var opts = [this.quiz.word];
+      var pool = this.lang.anchored().concat(this.starterWords);
+      while (opts.length < 3 && pool.length) {
+        var c = pool.splice((Math.random() * pool.length) | 0, 1)[0];
+        if (opts.indexOf(c) === -1) opts.push(c);
+      }
+      for (var i = opts.length - 1; i > 0; i--) {        // shuffle
+        var j = (Math.random() * (i + 1)) | 0, t = opts[i]; opts[i] = opts[j]; opts[j] = t;
+      }
+      this.quiz.options = opts;
+      this.restT = K.quizTime + 1;     // it waits there, looking at you
+      this._say('hvad er det her?', '#ffd27a', K.quizTime);
+      this._refreshChips(); this._refreshShelf();
+    } else if (this.wordGoal) {
+      this._say('«' + this.wordGoal + '»!', '#9ff0cd', 2.8);
+      this.lang.strengthen(this.wordGoal, 0.15);          // practice deepens the channel
+      this.lastWord = { w: this.wordGoal, t: Date.now() };
+      this.wordGoal = null;
+    } else {
+      this._say(this._pick(BABBLE.found), '#9ff0cd', 1.8);
+    }
+  },
+
+  _startQuiz: function (known) {
+    var self = this;
+    known.sort(function (a, b) { return self.lang.words[a].s - self.lang.words[b].s; });
+    var word = known[(Math.random() * Math.min(2, known.length)) | 0];  // practice the weakest
+    var w = this.lang.words[word];
+    this.quiz = { word: word, phase: 'travel', t: 0, options: null };
+    this.goal = { x: w.x, z: w.z };
+    this.bestD = Infinity; this.stuckT = 0;
+    this._say('hmm…', '#ffd27a', 2.0);
+  },
+
+  _answerQuiz: function (word) {
+    var q = this.quiz;
+    if (!q || q.phase !== 'ask') return;
+    if (word === q.word) {
+      this._say('JA! «' + word + '»!', '#7dffb0', 3.0);
+      this.lang.strengthen(word, 0.25);
+      this.lang.words[word].ok++;
+      this.kernel.feed(10);
+      this.temp = Math.max(this.K.tMin, this.temp - 0.2);   // correct answers are soothing
+    } else {
+      this._say('næh — det er «' + q.word + '»', '#ffb08a', 3.6);
+      this.lang.strengthen(q.word, 0.05);
+    }
+    this._endQuiz();
+  },
+
+  _endQuiz: function () {
+    this.quiz = null; this.quizT = 0;
+    this.mode = 'seeking'; this.restT = 0;
+    this._placeGoal();
+    this._refreshChips(); this._refreshShelf();
+    this._saveSoul();
+  },
+
+  // Innate reflex words — the Danish it was born understanding.
+  _reflex: function (word) {
+    if (this.quiz) { this.quiz = null; this.quizT = 0; this.mode = 'seeking'; this.restT = 0; }
+    if (word === 'kom') {
+      var u = this._userHeadPos();
+      if (u) {
+        this.wordGoal = null;
+        this.goal = { x: u.x + (this.pos.x - u.x) * 0.25, z: u.z + (this.pos.z - u.z) * 0.25 };
+        this.bestD = Infinity; this.stuckT = 0; this.mode = 'seeking';
+        this.temp = Math.min(this.K.tMax, this.temp + 0.1);   // excited to be called
+        this._say('kommer!', '#ffd27a', 2.2);
+      }
+    } else if (word === 'stop') {
+      this.mom = 0; this.wordGoal = null;
+      this.mode = 'resting'; this.restT = 2.0;
+      this._say('stopper.', '#ffd27a', 2.0);
+    } else if (word === 'dygtig') {
+      this.kernel.feed(15);
+      this.temp = Math.max(this.K.tMin, this.temp - 0.22);
+      // Praise reinforces whatever word just happened — Hebbian to the bone.
+      if (this.lastWord && Date.now() - this.lastWord.t < 10000) {
+        this.lang.strengthen(this.lastWord.w, 0.2);
+        this._say('glad! ♥ «' + this.lastWord.w + '»!', '#7dffb0', 2.8);
+      } else {
+        this._say('glad! ♥', '#7dffb0', 2.4);
+      }
+    }
+  },
+
+  // Comprehension: a known word reshapes its world — it flows to the word's place.
+  _sayWord: function (word) {
+    var w = this.lang.words[word];
+    if (!w) return;
+    if (this.quiz) { this.quiz = null; this.quizT = 0; }
+    this.wordGoal = word;
+    this.goal = { x: w.x, z: w.z };
+    this.bestD = Infinity; this.stuckT = 0;
+    this.mode = 'seeking'; this.restT = 0;
+    this._say('«' + word + '»?', '#9fdcff', 2.0);
+  },
+
+  // Teaching: bind an armed word to a place. One Hebbian carve.
+  _teachBind: function (word, x, z) {
+    this.lang.learn(word, x, z);
+    this._placeWordMarker(word, x, z);
+    this.lastWord = { w: word, t: Date.now() };
+    this.selectedWord = null;
+    this.kernel.feed(4);                                   // learning feels good
+    this.temp = Math.min(this.K.tMax, this.temp + 0.08);   // a little thrill
+    this._say('«' + word + '» … lært!', '#7dffb0', 2.8);
+    this._refreshChips(); this._refreshShelf();
+    this._saveSoul();
+  },
+
+  _placeWordMarker: function (word, x, z) {
+    var m = this.wordEls[word];
+    if (!m) {
+      m = {
+        ring: this._make('a-entity', {
+          geometry: 'primitive: ring; radiusInner: 0.055; radiusOuter: 0.07',
+          rotation: '-90 0 0',
+          material: 'shader: flat; color: #46d6a0; opacity: 0.45; transparent: true; side: double'
+        }),
+        label: this._make('a-text', {
+          value: word, font: 'dejavu', align: 'center', width: '0.7', color: '#bfffe0'
+        })
+      };
+      this.wordEls[word] = m;
+    }
+    m.ring.object3D.position.set(x, 0.012, z);
+    m.label.object3D.position.set(x, 0.15, z);
+    var u = this._userHeadPos();
+    if (u) m.label.object3D.rotation.set(0, Math.atan2(u.x - x, u.z - z), 0);
+  },
+
+  // Word plaque or floor? Route a pinch in space.
+  _onPinchPoint: function (p) {
+    if (!p) return;
+    for (var i = 0; i < this.plaques.length; i++) {
+      var q = this.plaques[i];
+      var dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+      if (dx * dx + dy * dy + dz * dz < 0.16 * 0.16) { this._plaqueAction(q.word); return; }
+    }
+    if (p.y < 0.45 && this.selectedWord) this._teachBind(this.selectedWord, p.x, p.z);
+  },
+
+  // What a word does when spoken (tapped/pinched).
+  _plaqueAction: function (word) {
+    if (this.quiz && this.quiz.phase === 'ask' && this.quiz.options.indexOf(word) !== -1) {
+      this._answerQuiz(word); return;
+    }
+    if (this.innateWords.indexOf(word) !== -1) { this._reflex(word); return; }
+    var w = this.lang.words[word];
+    if (w && w.s > 0.12) { this._sayWord(word); return; }
+    this.selectedWord = word; this.selT = 10;              // unknown: arm teaching
+    this._say('vis mig «' + word + '»…', '#ffd27a', 3.0);
+    this._refreshChips(); this._refreshShelf();
+  },
+
+  _userHeadPos: function () {
+    var cam = document.getElementById('cam');
+    if (!cam || !cam.object3D) return null;
+    cam.object3D.getWorldPosition(this._camVec);
+    return { x: this._camVec.x, y: this._camVec.y, z: this._camVec.z };
+  },
+
+  /* ── the in-AR word shelf ── */
+  _buildShelf: function () {
+    this._clearShelf();
+    var u = this._userHeadPos();
+    if (!u) return;
+    var dx = u.x - this.origin.x, dz = u.z - this.origin.z;
+    var len = Math.sqrt(dx * dx + dz * dz) || 1;
+    dx /= len; dz /= len;
+    var cx = this.origin.x + dx * 1.0, cz = this.origin.z + dz * 1.0;  // between you and the field
+    var px = -dz, pz = dx;                                             // shelf axis
+    var yaw = Math.atan2(u.x - cx, u.z - cz);
+    var self = this;
+    var put = function (word, idx, n, y, innate) {
+      var off = (idx - (n - 1) / 2) * 0.18;
+      var x = cx + px * off, z = cz + pz * off;
+      var root = self._make('a-entity', {});
+      root.object3D.position.set(x, y, z);
+      root.object3D.rotation.set(0, yaw, 0);
+      var plane = document.createElement('a-plane');
+      plane.setAttribute('width', '0.165');
+      plane.setAttribute('height', '0.075');
+      plane.setAttribute('material', 'shader: flat; color: #10222f; opacity: 0.85; transparent: true; side: double');
+      root.appendChild(plane);
+      var txt = document.createElement('a-text');
+      txt.setAttribute('value', word);
+      txt.setAttribute('font', 'dejavu');
+      txt.setAttribute('align', 'center');
+      txt.setAttribute('width', '0.85');
+      txt.setAttribute('color', innate ? '#ffd27a' : '#cfe9f5');
+      txt.setAttribute('position', '0 0 0.004');
+      root.appendChild(txt);
+      self.plaques.push({ word: word, root: root, plane: plane, x: x, y: y, z: z, innate: innate });
+    };
+    var i;
+    for (i = 0; i < this.innateWords.length; i++) put(this.innateWords[i], i, this.innateWords.length, 1.04, true);
+    var vocab = this.starterWords.concat(this.customWords).slice(0, 9);
+    for (i = 0; i < vocab.length; i++) put(vocab[i], i, vocab.length, 0.86, false);
+    this._refreshShelf();
+  },
+
+  _clearShelf: function () {
+    for (var i = 0; i < this.plaques.length; i++) {
+      var r = this.plaques[i].root;
+      if (r && r.parentNode) r.parentNode.removeChild(r);
+    }
+    this.plaques = [];
+  },
+
+  _refreshShelf: function () {
+    for (var i = 0; i < this.plaques.length; i++) {
+      var q = this.plaques[i], col = '#10222f';
+      if (q.innate) col = '#3a2f10';
+      else if (this.quiz && this.quiz.phase === 'ask' && this.quiz.options.indexOf(q.word) !== -1) col = '#6a5410';
+      else if (this.selectedWord === q.word) col = '#1d4a6a';
+      else if (this.lang.words[q.word] && this.lang.words[q.word].s > 0.12) col = '#114633';
+      q.plane.setAttribute('material', 'color', col);
+    }
+  },
+
+  /* ── desktop word chips ── */
+  _initLanguageUI: function () {
+    var self = this;
+    this._refreshChips();
+    var input = document.getElementById('word-in');
+    var go = function () {
+      if (!input) return;
+      var word = (input.value || '').trim().toLowerCase();
+      input.value = '';
+      if (!word || word.length > 18 || !/^[a-zæøåéü\- ]+$/i.test(word)) return;
+      if (self.innateWords.indexOf(word) !== -1) { self._reflex(word); return; }
+      if (self.starterWords.indexOf(word) === -1 && self.customWords.indexOf(word) === -1) {
+        self.customWords.push(word);
+      }
+      self.selectedWord = word; self.selT = 14;
+      self._say('vis mig «' + word + '»…', '#ffd27a', 3.0);
+      self._refreshChips();
+    };
+    var btn = document.getElementById('btn-word');
+    if (btn) btn.addEventListener('click', go);
+    if (input) input.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+  },
+
+  _refreshChips: function () {
+    var box = document.getElementById('chips');
+    if (!box) return;
+    box.innerHTML = '';
+    var self = this;
+    var all = this.innateWords.concat(this.starterWords).concat(this.customWords);
+    for (var k in this.lang.words) {                       // words from past lives
+      if (this.lang.words.hasOwnProperty(k) && all.indexOf(k) === -1) all.push(k);
+    }
+    all.forEach(function (word) {
+      var c = document.createElement('span');
+      c.className = 'chip';
+      if (self.innateWords.indexOf(word) !== -1) c.className += ' innate';
+      else if (self.lang.words[word] && self.lang.words[word].s > 0.12) c.className += ' known';
+      if (self.selectedWord === word) c.className += ' armed';
+      if (self.quiz && self.quiz.phase === 'ask' && self.quiz.options.indexOf(word) !== -1) c.className += ' quiz';
+      c.textContent = word;
+      c.addEventListener('click', function () { self._plaqueAction(word); });
+      box.appendChild(c);
+    });
+  },
+
+  /* ── the soul: everything it is, persisted across days ── */
+  _saveSoul: function () {
+    try {
+      localStorage.setItem('raindrop_soul_v1', JSON.stringify({
+        v: 1,
+        birth: this.soul.birth,
+        fear: this.kernel.valves.fearResistance,
+        energy: this.kernel.internalEnergy,
+        words: this.lang.words,
+        custom: this.customWords,
+        scars: this.scars.map(function (s) { return { x: s.x, z: s.z }; })
+      }));
+    } catch (e) { /* storage unavailable — it lives in the moment */ }
+  },
+
+  _loadSoul: function () {
+    var born = true;
+    try {
+      var raw = localStorage.getItem('raindrop_soul_v1');
+      if (raw) {
+        var s = JSON.parse(raw);
+        this.soul.birth = s.birth || Date.now();
+        if (typeof s.fear === 'number')   this.kernel.valves.fearResistance = s.fear;
+        if (typeof s.energy === 'number') this.kernel.internalEnergy = s.energy;
+        this.lang.load(s.words);
+        this.customWords = s.custom || [];
+        var sc = s.scars || [];
+        for (var i = 0; i < Math.min(sc.length, this.K.scarCap); i++) this._burnScar(sc[i].x, sc[i].z);
+        var an = this.lang.anchored();
+        for (i = 0; i < an.length; i++) {
+          var w = this.lang.words[an[i]];
+          this._placeWordMarker(an[i], w.x, w.z);
+        }
+        born = false;
+      }
+    } catch (e) { born = true; }
+    this._say(born ? 'hej verden! ✨' : 'hej igen! 💧', '#9fdcff', 4.0);
   },
 
   _make: function (tag, attrs) {
