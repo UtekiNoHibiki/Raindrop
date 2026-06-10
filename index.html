@@ -9,7 +9,7 @@
 
 <style>
   :root{
-    var(--ink):       #061018;
+    --ink:        #061018;
     --panel:      rgba(8, 20, 30, 0.72);
     --hair:       rgba(120, 190, 230, 0.22);
     --text:       #cfe9f5;
@@ -20,7 +20,7 @@
     --warn:       #ff5c7a;
     --mono:       ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
   }
-  html,body{margin:0;height:100%;background:#061018;overflow:hidden;font-family:var(--mono);color:var(--text)}
+  html,body{margin:0;height:100%;background:var(--ink);overflow:hidden;font-family:var(--mono);color:var(--text)}
 
   #hud{
     position:fixed; top:14px; left:14px; z-index:10; width:288px;
@@ -156,7 +156,6 @@ function RaindropKernel() {
   };
   this.internalEnergy = 100.0;
   this.isResting = false;
-  // OPTIMIZED: Pre-allocate output object to stop garbage collection stutter in VR
   this._out = { flowForward: 0.0, flowTurn: 0.0 };
 }
 
@@ -269,7 +268,6 @@ AFRAME.registerComponent('raindrop-sim', {
       trailDecay:   0.40    
     };
 
-    // OPTIMIZED: Pre-allocate physics environments and vectors to prevent VR GC stutters
     this._env = { front: 0.1, left: 0.1, right: 0.1, back: 0.1, foodPull: 0 };
     this._handVec = new THREE.Vector3();
     this._camVec = new THREE.Vector3();
@@ -277,7 +275,6 @@ AFRAME.registerComponent('raindrop-sim', {
     this._raycaster = new THREE.Raycaster();
     this._ndc = new THREE.Vector2();
     
-    // OPTIMIZED: Pre-calculate complex math multipliers
     this.obstacleS2 = 2 * this.K.obstacleSig * this.K.obstacleSig;
     this.scarS2 = 2 * this.K.scarSig * this.K.scarSig;
     this.handS2 = 2 * this.K.handSig * this.K.handSig;
@@ -309,20 +306,22 @@ AFRAME.registerComponent('raindrop-sim', {
 
     this.dropEl = this._make('a-sphere', {
       radius: this.K.raindropRad,
+      position: '0 0 0',
       material: 'shader: standard; color: #6fd0ff; emissive: #2f9fe0; emissiveIntensity: 1.4; opacity: 0.92; transparent: true; metalness: 0.1; roughness: 0.25'
     });
     this.auraEl = this._make('a-sphere', {
       radius: this.K.raindropRad * 2.1,
+      position: '0 0 0',
       material: 'shader: standard; color: #4fb8ff; emissive: #2f8fd0; emissiveIntensity: 0.6; opacity: 0.16; transparent: true; metalness: 0; roughness: 1; side: double'
     });
 
     this.goalRing = this._make('a-torus', {
       radius: 0.16, 'radius-tubular': 0.012,
-      rotation: '-90 0 0',
+      rotation: '-90 0 0', position: '0 0 0',
       material: 'shader: flat; color: #ffd27a; opacity: 0.9; transparent: true; side: double'
     });
     this.goalGlow = this._make('a-cylinder', {
-      radius: 0.10, height: 0.5,
+      radius: 0.10, height: 0.5, position: '0 0 0',
       material: 'shader: flat; color: #ffcf6a; opacity: 0.12; transparent: true; side: double'
     });
 
@@ -333,9 +332,9 @@ AFRAME.registerComponent('raindrop-sim', {
     for (var t = 0; t < this.K.trailCap; t++) {
       var d = this._make('a-circle', {
         radius: 0.045, rotation: '-90 0 0',
+        position: '0 0.004 0', // Moved position into attribute creation
         material: 'shader: flat; color: #2f9fe0; opacity: 0; transparent: true; side: double'
       });
-      d.object3D.position.set(0, 0.004, 0);
       this.trail.push({ el: d, op: 0 });
     }
 
@@ -397,6 +396,7 @@ AFRAME.registerComponent('raindrop-sim', {
   },
 
   tick: function (time, dtMs) {
+    if (!this.dropEl.object3D || !this.goalRing.object3D) return; // Prevent early tick crashes
     var K = this.K;
     var dt = Math.min((dtMs || 16) / 1000, 0.05);  
     if (dt <= 0) return;
@@ -441,7 +441,6 @@ AFRAME.registerComponent('raindrop-sim', {
     var e = this._wrap(goalAngle - this.h);
     var goalGate = Math.max(0, 1 - this._clamp01(frontRes)); 
 
-    // OPTIMIZED: Using pre-allocated _env object
     var env = this._env;
     env.front = 1.0 + frontRes;
     env.left = 1.0 + leftRes;
@@ -522,7 +521,6 @@ AFRAME.registerComponent('raindrop-sim', {
   _resistanceAt: function (x, z) {
     var K = this.K, r = 0, i, d2;
 
-    // OPTIMIZED: Pre-calculated S2 values
     for (i = 0; i < this.obstacles.length; i++) {
       var o = this.obstacles[i];
       d2 = (x - o.x) * (x - o.x) + (z - o.z) * (z - o.z);
@@ -561,7 +559,6 @@ AFRAME.registerComponent('raindrop-sim', {
       var dx = this.pos.x - o.x, dz = this.pos.z - o.z;
       var d2 = dx * dx + dz * dz;
       
-      // OPTIMIZED: Fast squared distance check avoids Math.sqrt most frames
       if (d2 < painDistSq) {
         var d = Math.sqrt(d2);
         var nx = (d > 1e-4) ? dx / d : Math.cos(this.h + Math.PI);
@@ -595,13 +592,14 @@ AFRAME.registerComponent('raindrop-sim', {
     if (this.scars.length >= K.scarCap) {
       var old = this.scars.shift();      
       el = old.el;
+      el.setAttribute('position', x + ' 0.006 ' + z); // Fix for recycled scars
     } else {
       el = this._make('a-circle', {
         radius: 0.06, rotation: '-90 0 0',
+        position: x + ' 0.006 ' + z, // Fix for new scars
         material: 'shader: flat; color: #ff5c4a; opacity: 0.32; transparent: true; side: double'
       });
     }
-    el.object3D.position.set(x, 0.006, z);
     this.scars.push({ x: x, z: z, el: el });
   },
 
@@ -615,7 +613,6 @@ AFRAME.registerComponent('raindrop-sim', {
       var h = this.hands[k];
       if (!el || !el.object3D) { h.active = false; continue; }
       
-      // OPTIMIZED: Pre-allocated vector
       el.object3D.getWorldPosition(this._handVec);
       var p = this._handVec;
       
@@ -773,9 +770,9 @@ AFRAME.registerComponent('raindrop-sim', {
       var ht = 0.4 + Math.random() * 0.35;
       var reed = this._make('a-cylinder', {
         radius: K.obstacleRad, height: ht,
+        position: ox + ' ' + (ht / 2) + ' ' + oz, // Fixed DOM attribute
         material: 'shader: standard; color: #3fae7a; emissive: #1f6e4a; emissiveIntensity: 0.4; opacity: 0.78; transparent: true; metalness: 0; roughness: 0.7'
       });
-      reed.object3D.position.set(ox, ht / 2, oz);
       this.obstacleEls.push(reed);
     }
     this._placeGoal();
@@ -833,7 +830,6 @@ AFRAME.registerComponent('raindrop-sim', {
     var cam = document.getElementById('cam');
     if (!cam || !cam.object3D) return;
     
-    // OPTIMIZED: Pre-allocated vectors
     cam.object3D.getWorldPosition(this._camVec);
     cam.object3D.getWorldDirection(this._camDir); 
     
@@ -853,7 +849,6 @@ AFRAME.registerComponent('raindrop-sim', {
     var cam = this.el.camera;
     if (!cam) return null;
     
-    // OPTIMIZED: Pre-allocated Raycaster and NDC vectors
     this._ndc.set((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
     this._raycaster.setFromCamera(this._ndc, cam);
     return this._intersectFloor(this._raycaster.ray.origin, this._raycaster.ray.direction);
@@ -862,7 +857,6 @@ AFRAME.registerComponent('raindrop-sim', {
   _controllerFloorHit: function (el) {
     if (!el || !el.object3D) return null;
     
-    // OPTIMIZED: Pre-allocated vectors for controller checks
     el.object3D.getWorldPosition(this._handVec);
     el.object3D.getWorldDirection(this._camDir); 
     
