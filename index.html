@@ -5,10 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 <title>💧 Raindrop — Quest Field Test</title>
 
-<!-- A-Frame loader with synchronous fallback chain.
-     cdnjs does NOT host A-Frame 1.5.0 (it jumps from 0.x to 1.7.x), which is
-     why the previous build black-screened. Official releases live on aframe.io;
-     jsDelivr mirrors every npm version as backup. -->
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 <script>
   if (!window.AFRAME) {
@@ -69,7 +65,7 @@
   .hint{font-size:9.5px; color:var(--muted); margin-top:11px; line-height:1.5; border-top:1px solid var(--hair); padding-top:9px}
   .drop{filter:drop-shadow(0 0 6px rgba(80,180,255,.8))}
   @media (prefers-reduced-motion: reduce){ .bar > i{transition:none} }
-  /* ── language / newborn UI ── */
+  
   #chips{display:flex; flex-wrap:wrap; gap:5px; margin-top:6px}
   .chip{font-family:var(--mono); font-size:10px; color:#9fc4dd; cursor:pointer;
     background:#0d2233; border:1px solid #2c4a63; border-radius:11px; padding:3px 8px;
@@ -96,7 +92,6 @@
   ⚠ A-Frame failed to load from all CDNs — the river cannot flow.<br>
   Check the network (F12 → Console) or self-host aframe.min.js next to this file.
 </div>
-
 
 <div id="hud" aria-live="polite">
   <h1><span class="drop">💧</span> Raindrop · Field Test</h1>
@@ -194,7 +189,6 @@
 </a-scene>
 
 <script>
-// Boot guard: if A-Frame failed on every CDN, say so visibly and stop.
 if (!window.AFRAME) {
   var be = document.getElementById('boot-error');
   if (be) be.style.display = 'block';
@@ -224,7 +218,6 @@ function RaindropKernel() {
   };
   this.internalEnergy = 100.0;
   this.isResting = false;
-  // OPTIMIZED: Pre-allocate output object to stop garbage collection stutter in VR
   this._out = { flowForward: 0.0, flowTurn: 0.0 };
 }
 
@@ -266,9 +259,6 @@ RaindropKernel.prototype.feed = function (nourishment) {
   this.internalEnergy = Math.min(100.0, this.internalEnergy + nourishment);
 };
 
-/* =====================================================================
-   THE NEWBORN'S VOICE  ·  pre-linguistic Danish babble.
-   ===================================================================== */
 var BABBLE = {
   idle:   ['ooh!', 'blub~', 'iiih!', 'spændende!', 'hvad er DET?', 'wiii~', 'mere verden!', 'hmm?', 'flyde flyde…'],
   wonder: ['nyt sted!', 'ooh!', 'her er nyt!', 'spændende!'],
@@ -278,19 +268,13 @@ var BABBLE = {
   wake:   ['frisk igen!', 'mere verden!']
 };
 
-/* =====================================================================
-   LANGUAGE VALVES  ·  Hebbian word <-> place association.
-   No dataset, no backprop. A word heard near an experience carves a
-   channel, exactly like a scar — but a pleasant one. Words are remote
-   pressure: hearing one reshapes the resistance field from afar.
-   ===================================================================== */
 function LanguageValves() {
-  this.words = {};   // word -> { x, z, s: strength 0..1, n: times taught, ok: quiz wins }
+  this.words = {};   
 }
 LanguageValves.prototype.learn = function (word, x, z) {
   var w = this.words[word] || { x: x, z: z, s: 0, n: 0, ok: 0 };
   w.x = x; w.z = z;
-  w.s = Math.min(1, w.s + (1 - w.s) * 0.4);   // Hebbian: repetition deepens the channel
+  w.s = Math.min(1, w.s + (1 - w.s) * 0.4);   
   w.n++;
   this.words[word] = w;
   return w;
@@ -313,13 +297,6 @@ LanguageValves.prototype.decay = function (dt) {
 };
 LanguageValves.prototype.load = function (obj) { this.words = obj || {}; };
 
-/* =====================================================================
-   RAINDROP VOICE  ·  a water-creature larynx in WebAudio.
-   It does not speak phonemes — it speaks MELODY. Every utterance is a
-   pitch contour sung through a droplet timbre. Babies learn prosody
-   before words; so does Raindrop. Contours heard through the ear are
-   replayed here — it speaks Danish in YOUR melody.
-   ===================================================================== */
 function RaindropVoice() {
   this.ctx = null;
   this.master = null;
@@ -338,7 +315,7 @@ RaindropVoice.prototype.ensure = function () {
     return this.ctx.state === 'running';
   } catch (e) { return false; }
 };
-// Deterministic contour from a word — each word always sounds like itself.
+
 RaindropVoice.prototype.seedContour = function (word) {
   var h = 2166136261, i;
   for (i = 0; i < word.length; i++) { h ^= word.charCodeAt(i); h = (h * 16777619) >>> 0; }
@@ -354,9 +331,8 @@ RaindropVoice.prototype.PRESETS = {
   wake:     { c: [0.25, 0.7, 0.55],     d: 480 },
   question: { c: [0.3, 0.35, 0.5, 0.98],d: 620 },
   low:      { c: [0.35, 0.2],           d: 420 },
-  babble:   null  // randomized each time
+  babble:   null  
 };
-// spec: preset name | {contour, dur} | {seed: word}. mood: {pitch, rate, vol}
 RaindropVoice.prototype.play = function (spec, mood) {
   if (!this.ensure()) return;
   var c, d;
@@ -390,7 +366,7 @@ RaindropVoice.prototype.play = function (spec, mood) {
     osc2.frequency.exponentialRampToValueAtTime(Math.max(120, fAt(c[k]) * 2.003), tk);
   }
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(0.9 * vol, t0 + 0.035);   // droplet onset
+  g.gain.exponentialRampToValueAtTime(0.9 * vol, t0 + 0.035);   
   g.gain.setValueAtTime(0.9 * vol, t0 + d * 0.7);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + d);
   osc.connect(g); osc2.connect(g2); g2.connect(g);
@@ -399,11 +375,11 @@ RaindropVoice.prototype.play = function (spec, mood) {
   osc.stop(t0 + d + 0.05); osc2.stop(t0 + d + 0.05);
 };
 
-/* Bounded-lag autocorrelation pitch detector — cheap enough for a headset. */
 function detectPitch(buf, sr) {
   var N = buf.length, rms = 0, i;
   for (i = 0; i < N; i++) rms += buf[i] * buf[i];
-  if (Math.sqrt(rms / N) < 0.015) return -1;          // silence
+  // LOWERED THRESHOLD: Was 0.015, now 0.005 to catch softer Quest mic audio
+  if (Math.sqrt(rms / N) < 0.005) return -1;          
   var minLag = Math.floor(sr / 520), maxLag = Math.min(Math.floor(sr / 70), N - 8);
   var best = -1, bestV = 0, lag;
   for (lag = minLag; lag <= maxLag; lag++) {
@@ -414,7 +390,7 @@ function detectPitch(buf, sr) {
   if (best < 0) return -1;
   return sr / best;
 }
-/* Normalize a voiced-frame list into a 0..1 melody of 14 points. */
+
 function contourFrom(frames) {
   var i, lo = Infinity, hi = -Infinity, logs = [];
   for (i = 0; i < frames.length; i++) {
@@ -430,8 +406,6 @@ function contourFrom(frames) {
   }
   return out;
 }
-
-
 
 AFRAME.registerComponent('raindrop-sim', {
   init: function () {
@@ -470,19 +444,16 @@ AFRAME.registerComponent('raindrop-sim', {
       guideGravity: 1.40,   
       foodPullGain: 0.50,   
 
-      // --- VOICE & EAR ---
-      voiceVol:     0.16,   // water-voice loudness
-      earTick:      90,     // ms between pitch reads
-      earSilence:   0.55,   // sec of silence that ends an utterance
-      earMinVoiced: 4,      // min voiced frames to count as speech
+      voiceVol:     0.16,   
+      earTick:      90,     
+      earSilence:   0.55,   
+      earMinVoiced: 4,      
 
-      // --- REAL WORLD (Quest room scan -> resistance) ---
-      scanEvery:    2000,   // ms between plane/mesh scans
-      realStep:     0.30,   // sample spacing along real edges (m)
-      realCap:      150,    // max real obstacle points
-      realDotCap:   60,     // max visual markers
+      scanEvery:    2000,   
+      realStep:     0.30,   
+      realCap:      150,    
+      realDotCap:   60,     
 
-      // --- LANGUAGE / NEWBORN ---
       noveltyCell:  0.35,
       wonderHeat:   0.05,
       babbleMin:    5, babbleMax: 11,
@@ -524,7 +495,6 @@ AFRAME.registerComponent('raindrop-sim', {
       trailDecay:   0.40    
     };
 
-    // OPTIMIZED: Pre-allocate physics environments and vectors to prevent VR GC stutters
     this._env = { front: 0.1, left: 0.1, right: 0.1, back: 0.1, foodPull: 0 };
     this._handVec = new THREE.Vector3();
     this._camVec = new THREE.Vector3();
@@ -533,7 +503,6 @@ AFRAME.registerComponent('raindrop-sim', {
     this._camQuat = new THREE.Quaternion();
     this._ndc = new THREE.Vector2();
     
-    // OPTIMIZED: Pre-calculate complex math multipliers
     this.obstacleS2 = 2 * this.K.obstacleSig * this.K.obstacleSig;
     this.scarS2 = 2 * this.K.scarSig * this.K.scarSig;
     this.handS2 = 2 * this.K.handSig * this.K.handSig;
@@ -558,8 +527,8 @@ AFRAME.registerComponent('raindrop-sim', {
     this.hands  = {
       left:   { active: false, pinching: false, x: 0, z: 0, y: 0 },
       right:  { active: false, pinching: false, x: 0, z: 0, y: 0 },
-      cleft:  { active: false, pinching: false, x: 0, z: 0, y: 0 },  // controller: grip=push, Y-hold=pull
-      cright: { active: false, pinching: false, x: 0, z: 0, y: 0 }   // controller: grip=push, B-hold=pull
+      cleft:  { active: false, pinching: false, x: 0, z: 0, y: 0 },  
+      cright: { active: false, pinching: false, x: 0, z: 0, y: 0 }   
     };
     this.ctl = {
       cleft:  { grip: false, pull: false },
@@ -567,7 +536,6 @@ AFRAME.registerComponent('raindrop-sim', {
     };
     this.visAcc = 0;
 
-    // ── NEWBORN STATE ──
     this.lang = new LanguageValves();
     this.innateWords  = ['kom', 'stop', 'dygtig'];
     this.starterWords = ['vand', 'sofa', 'bord', 'lampe', 'dør', 'vindue', 'mad', 'hjem'];
@@ -587,10 +555,13 @@ AFRAME.registerComponent('raindrop-sim', {
     this.wordEls = {};
     this.voice = new RaindropVoice();
     this.voiceOn = true;
-    this.pendingVoice = null;         // melody waiting for its word
+    this.pendingVoice = null;         
+    
+    // EAR FIX: Added acc variable to handle tick timing
     this.ear = { on: false, stream: null, analyser: null, timer: null,
-                 buf: null, voiced: [], silence: 0 };
-    this.realMode = false;            // true once the real room is felt
+                 buf: null, voiced: [], silence: 0, acc: 0 };
+                 
+    this.realMode = false;            
     this._lastScan = 0;
     this.realDots = [];
     this._arHintT = 0;
@@ -620,7 +591,6 @@ AFRAME.registerComponent('raindrop-sim', {
     this.whiskerC = this._make('a-entity', { line: 'start: 0 0 0; end: 0 0 0; color: #46d6a0; opacity: 0.7' });
     this.whiskerR = this._make('a-entity', { line: 'start: 0 0 0; end: 0 0 0; color: #46d6a0; opacity: 0.55' });
 
-    // Speech bubble — the newborn's voice, floating above the drop.
     this.bubbleEl = this._make('a-entity', {});
     this.bubblePlane = document.createElement('a-plane');
     this.bubblePlane.setAttribute('width', '0.40');
@@ -648,7 +618,7 @@ AFRAME.registerComponent('raindrop-sim', {
 
     this._scatterWorld();
     this._resetDrop();
-    this._loadSoul();          // wake up: remembers its words, scars, fear, age
+    this._loadSoul();          
     this._initLanguageUI();
 
     var sceneEl = this.el;
@@ -690,25 +660,19 @@ AFRAME.registerComponent('raindrop-sim', {
     ['leftCtl', 'rightCtl'].forEach(function (id) {
       var el = document.getElementById(id);
       var ck = (id === 'leftCtl') ? 'cleft' : 'cright';
-      // TRIGGER: point-and-click — word plaques first, floor second.
       el.addEventListener('triggerdown', function () {
         self.voice.ensure();
         self._controllerRayAction(el);
       });
-      // GRIP: high-pressure palm while held.
       el.addEventListener('gripdown', function () { self.ctl[ck].grip = true; });
       el.addEventListener('gripup',   function () { self.ctl[ck].grip = false; });
-      // B / Y held: Guiding Current — pull the river to the controller.
       el.addEventListener('bbuttondown', function () { self.ctl[ck].pull = true; });
       el.addEventListener('bbuttonup',   function () { self.ctl[ck].pull = false; });
       el.addEventListener('ybuttondown', function () { self.ctl[ck].pull = true; });
       el.addEventListener('ybuttonup',   function () { self.ctl[ck].pull = false; });
-      // A / X: praise — "dygtig!"
       el.addEventListener('abuttondown', function () { self._reflex('dygtig'); });
       el.addEventListener('xbuttondown', function () { self._reflex('dygtig'); });
-      // Thumbstick press: "stop"
       el.addEventListener('thumbstickdown', function () { self._reflex('stop'); });
-      // Controllers picked up -> hand-tracking pinches must not stick.
       el.addEventListener('controllerconnected', function () {
         self.hands.left.pinching = false;
         self.hands.right.pinching = false;
@@ -757,12 +721,23 @@ AFRAME.registerComponent('raindrop-sim', {
   },
 
   tick: function (time, dtMs) {
+    if (!this.dropEl.object3D || !this.goalRing.object3D) return;
+      
     var K = this.K;
     var dt = Math.min((dtMs || 16) / 1000, 0.05);  
     if (dt <= 0) return;
 
+    // EAR TICK FIX: Move tick from decoupled setInterval to pure hardware-synchronized frame loop
+    if (this.ear && this.ear.on) {
+      this.ear.acc += (dtMs || 16);
+      if (this.ear.acc >= K.earTick) {
+        this.ear.acc = 0;
+        this._earTick();
+      }
+    }
+
     this._readHands();
-    this._lifeTick(dt);      // wonder, babble, quiz, forgetting, autosave, age
+    this._lifeTick(dt);      
     if (this.el.is('ar-mode')) this._scanReal(time, dt);
 
     if (this.mode === 'resting') {
@@ -807,7 +782,6 @@ AFRAME.registerComponent('raindrop-sim', {
     var e = this._wrap(goalAngle - this.h);
     var goalGate = Math.max(0, 1 - this._clamp01(frontRes)); 
 
-    // OPTIMIZED: Using pre-allocated _env object
     var env = this._env;
     env.front = 1.0 + frontRes;
     env.left = 1.0 + leftRes;
@@ -889,19 +863,16 @@ AFRAME.registerComponent('raindrop-sim', {
   _resistanceAt: function (x, z) {
     var K = this.K, r = 0, i, d2;
 
-    // OPTIMIZED: Pre-calculated S2 values
     for (i = 0; i < this.obstacles.length; i++) {
       var o = this.obstacles[i];
       d2 = (x - o.x) * (x - o.x) + (z - o.z) * (z - o.z);
       r += Math.exp(-d2 / this.obstacleS2);
     }
-    
     for (i = 0; i < this.scars.length; i++) {
       var sc = this.scars[i];
       d2 = (x - sc.x) * (x - sc.x) + (z - sc.z) * (z - sc.z);
       r += K.scarStrength * Math.exp(-d2 / this.scarS2);
     }
-    
     var hk = ['left', 'right', 'cleft', 'cright'];
     for (i = 0; i < 4; i++) {
       var hnd = this.hands[hk[i]];
@@ -910,7 +881,6 @@ AFRAME.registerComponent('raindrop-sim', {
         r += K.handPush * Math.exp(-d2 / this.handS2);
       }
     }
-    
     var ox = x - this.origin.x, oz = z - this.origin.z;
     var rad = Math.sqrt(ox * ox + oz * oz);
     if (rad > K.playRadius) r += (rad - K.playRadius) * 1.4;
@@ -928,7 +898,6 @@ AFRAME.registerComponent('raindrop-sim', {
       var dx = this.pos.x - o.x, dz = this.pos.z - o.z;
       var d2 = dx * dx + dz * dz;
       
-      // OPTIMIZED: Fast squared distance check avoids Math.sqrt most frames
       if (d2 < painDistSq) {
         var d = Math.sqrt(d2);
         var nx = (d > 1e-4) ? dx / d : Math.cos(this.h + Math.PI);
@@ -983,7 +952,6 @@ AFRAME.registerComponent('raindrop-sim', {
       var h = this.hands[k];
       if (!el || !el.object3D) { h.active = false; continue; }
       
-      // OPTIMIZED: Pre-allocated vector
       el.object3D.getWorldPosition(this._handVec);
       var p = this._handVec;
       
@@ -992,7 +960,6 @@ AFRAME.registerComponent('raindrop-sim', {
       h.active = plausible;   
       h.x = p.x; h.y = p.y; h.z = p.z;
     }
-    // Controllers: pressure only while a button is held — no accidental shoving.
     var cids = { cleft: 'leftCtl', cright: 'rightCtl' };
     for (var ck in cids) {
       if (!cids.hasOwnProperty(ck)) continue;
@@ -1003,7 +970,7 @@ AFRAME.registerComponent('raindrop-sim', {
       cel.object3D.getWorldPosition(this._handVec);
       var cp = this._handVec;
       ch.active = (Math.abs(cp.x) + Math.abs(cp.y) + Math.abs(cp.z) > 0.001);
-      ch.pinching = st.pull;             // pull-button mimics a pinch (Guiding Current)
+      ch.pinching = st.pull;             
       ch.x = cp.x; ch.y = cp.y; ch.z = cp.z;
     }
   },
@@ -1152,7 +1119,7 @@ AFRAME.registerComponent('raindrop-sim', {
     if (this.obstacleEls) { this.obstacleEls.forEach(function (e) { e.parentNode && e.parentNode.removeChild(e); }); }
     this.obstacleEls = [];
     this.obstacles = [];
-    if (this.realMode) { this._placeGoal(); return; }   // the room IS the maze
+    if (this.realMode) { this._placeGoal(); return; }   
     for (i = 0; i < K.obstacleN; i++) {
       var ang = (i / K.obstacleN) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
       var rr = (0.45 + Math.random() * 0.55) * K.playRadius;
@@ -1223,18 +1190,13 @@ AFRAME.registerComponent('raindrop-sim', {
   _anchorInFront: function () {
     var cam = document.getElementById('cam');
     if (!cam || !cam.object3D) return;
-    
-    // OPTIMIZED: Pre-allocated vectors
     cam.object3D.getWorldPosition(this._camVec);
     cam.object3D.getWorldDirection(this._camDir); 
-    
     var fwdX = -this._camDir.x;
     var fwdZ = -this._camDir.z;
     var lenSq = fwdX * fwdX + fwdZ * fwdZ;
-    
     if (lenSq < 1e-4) { fwdX = 0; fwdZ = -1; lenSq = 1.0; }
     var len = Math.sqrt(lenSq);
-    
     this.origin = { x: this._camVec.x + (fwdX / len) * 1.45, z: this._camVec.z + (fwdZ / len) * 1.45 };
     this._scatterWorld();
     this._resetDrop();
@@ -1243,14 +1205,11 @@ AFRAME.registerComponent('raindrop-sim', {
   _screenFloorHit: function (cx, cy) {
     var cam = this.el.camera;
     if (!cam) return null;
-    
-    // OPTIMIZED: Pre-allocated Raycaster and NDC vectors
     this._ndc.set((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
     this._raycaster.setFromCamera(this._ndc, cam);
     return this._intersectFloor(this._raycaster.ray.origin, this._raycaster.ray.direction);
   },
 
-  // Trigger ray: nearest word plaque within the beam, else the floor.
   _controllerRayAction: function (el) {
     if (!el || !el.object3D) return;
     el.object3D.getWorldPosition(this._handVec);
@@ -1277,15 +1236,11 @@ AFRAME.registerComponent('raindrop-sim', {
 
   _controllerFloorHit: function (el) {
     if (!el || !el.object3D) return null;
-    
-    // OPTIMIZED: Pre-allocated vectors for controller checks
     el.object3D.getWorldPosition(this._handVec);
     el.object3D.getWorldDirection(this._camDir); 
-    
     var dirX = -this._camDir.x;
     var dirY = -this._camDir.y;
     var dirZ = -this._camDir.z;
-    
     return this._intersectFloor(this._handVec, {x: dirX, y: dirY, z: dirZ});
   },
 
@@ -1303,8 +1258,6 @@ AFRAME.registerComponent('raindrop-sim', {
     if (l) l.setAttribute('visible', show);
   },
 
-  /* ════════════════ THE NEWBORN ════════════════ */
-
   _pick: function (arr) { return arr[(Math.random() * arr.length) | 0]; },
 
   _say: function (txt, color, dur, snd) {
@@ -1318,7 +1271,6 @@ AFRAME.registerComponent('raindrop-sim', {
   },
 
   _mood: function () {
-    // Its body IS its voice: hot = higher & quicker, tired = lower & slower.
     return {
       pitch: 1 + (this.temp - 0.35) * 0.55,
       rate:  0.85 + this.temp * 0.5,
@@ -1326,7 +1278,6 @@ AFRAME.registerComponent('raindrop-sim', {
     };
   },
 
-  // Speak a word: in YOUR melody if it learned one, else its own signature chirp.
   _speakWord: function (word) {
     if (!this.voiceOn) return;
     var w = this.lang.words[word];
@@ -1361,11 +1312,10 @@ AFRAME.registerComponent('raindrop-sim', {
     }
   },
 
-  // One heartbeat of childhood: wonder, babble, quizzes, forgetting, autosave.
   _lifeTick: function (dt) {
     var K = this.K;
     this.ageDays = (Date.now() - this.soul.birth) / 86400000;
-    var baby = Math.max(0.3, 1 - this.ageDays / 30);   // newborn-ness fades over a month
+    var baby = Math.max(0.3, 1 - this.ageDays / 30);   
 
     this.lang.decay(dt);
 
@@ -1374,7 +1324,6 @@ AFRAME.registerComponent('raindrop-sim', {
       if (this.selT <= 0) { this.selectedWord = null; this._refreshChips(); this._refreshShelf(); }
     }
 
-    // TRUTH made visceral: a never-visited cell is a spark of joy.
     if (this.mode === 'seeking' && !this.kernel.isResting) {
       var key = Math.round((this.pos.x - this.origin.x) / K.noveltyCell) + ',' +
                 Math.round((this.pos.z - this.origin.z) / K.noveltyCell);
@@ -1386,7 +1335,6 @@ AFRAME.registerComponent('raindrop-sim', {
       }
     }
 
-    // Idle babble — newborns narrate everything.
     this.babbleT -= dt;
     if (this.babbleT <= 0) {
       this.babbleT = (K.babbleMin + Math.random() * (K.babbleMax - K.babbleMin)) / (0.45 + baby);
@@ -1395,7 +1343,6 @@ AFRAME.registerComponent('raindrop-sim', {
       }
     }
 
-    // Quiz lifecycle.
     if (this.quiz && this.quiz.phase === 'ask') {
       this.quiz.t -= dt;
       if (this.quiz.t <= 0) {
@@ -1416,7 +1363,6 @@ AFRAME.registerComponent('raindrop-sim', {
     if (this.saveT <= 0) { this.saveT = K.saveEvery; this._saveSoul(); }
   },
 
-  // Arrived at the current goal — was it a word, a quiz site, or just lunch?
   _onArrived: function () {
     var K = this.K;
     if (this.quiz && this.quiz.phase === 'travel') {
@@ -1428,17 +1374,17 @@ AFRAME.registerComponent('raindrop-sim', {
         var c = pool.splice((Math.random() * pool.length) | 0, 1)[0];
         if (opts.indexOf(c) === -1) opts.push(c);
       }
-      for (var i = opts.length - 1; i > 0; i--) {        // shuffle
+      for (var i = opts.length - 1; i > 0; i--) {        
         var j = (Math.random() * (i + 1)) | 0, t = opts[i]; opts[i] = opts[j]; opts[j] = t;
       }
       this.quiz.options = opts;
-      this.restT = K.quizTime + 1;     // it waits there, looking at you
+      this.restT = K.quizTime + 1;     
       this._say('hvad er det her?', '#ffd27a', K.quizTime, 'question');
       this._refreshChips(); this._refreshShelf();
     } else if (this.wordGoal) {
       this._say('«' + this.wordGoal + '»!', '#9ff0cd', 2.8, 'happy');
       this._speakWord(this.wordGoal);
-      this.lang.strengthen(this.wordGoal, 0.15);          // practice deepens the channel
+      this.lang.strengthen(this.wordGoal, 0.15);          
       this.lastWord = { w: this.wordGoal, t: Date.now() };
       this.wordGoal = null;
     } else {
@@ -1449,7 +1395,7 @@ AFRAME.registerComponent('raindrop-sim', {
   _startQuiz: function (known) {
     var self = this;
     known.sort(function (a, b) { return self.lang.words[a].s - self.lang.words[b].s; });
-    var word = known[(Math.random() * Math.min(2, known.length)) | 0];  // practice the weakest
+    var word = known[(Math.random() * Math.min(2, known.length)) | 0];  
     var w = this.lang.words[word];
     this.quiz = { word: word, phase: 'travel', t: 0, options: null };
     this.goal = { x: w.x, z: w.z };
@@ -1466,7 +1412,7 @@ AFRAME.registerComponent('raindrop-sim', {
       this.lang.strengthen(word, 0.25);
       this.lang.words[word].ok++;
       this.kernel.feed(10);
-      this.temp = Math.max(this.K.tMin, this.temp - 0.2);   // correct answers are soothing
+      this.temp = Math.max(this.K.tMin, this.temp - 0.2);   
     } else {
       this._say('næh — det er «' + q.word + '»', '#ffb08a', 3.6, 'sad');
       this._speakWord(q.word);
@@ -1483,7 +1429,6 @@ AFRAME.registerComponent('raindrop-sim', {
     this._saveSoul();
   },
 
-  // Innate reflex words — the Danish it was born understanding.
   _reflex: function (word) {
     if (this.quiz) { this.quiz = null; this.quizT = 0; this.mode = 'seeking'; this.restT = 0; }
     if (word === 'kom') {
@@ -1492,7 +1437,7 @@ AFRAME.registerComponent('raindrop-sim', {
         this.wordGoal = null;
         this.goal = { x: u.x + (this.pos.x - u.x) * 0.25, z: u.z + (this.pos.z - u.z) * 0.25 };
         this.bestD = Infinity; this.stuckT = 0; this.mode = 'seeking';
-        this.temp = Math.min(this.K.tMax, this.temp + 0.1);   // excited to be called
+        this.temp = Math.min(this.K.tMax, this.temp + 0.1);   
         this._say('kommer!', '#ffd27a', 2.2, 'happy');
       }
     } else if (word === 'stop') {
@@ -1502,7 +1447,6 @@ AFRAME.registerComponent('raindrop-sim', {
     } else if (word === 'dygtig') {
       this.kernel.feed(15);
       this.temp = Math.max(this.K.tMin, this.temp - 0.22);
-      // Praise reinforces whatever word just happened — Hebbian to the bone.
       if (this.lastWord && Date.now() - this.lastWord.t < 10000) {
         this.lang.strengthen(this.lastWord.w, 0.2);
         this._say('glad! ♥ «' + this.lastWord.w + '»!', '#7dffb0', 2.8, 'happy');
@@ -1513,7 +1457,6 @@ AFRAME.registerComponent('raindrop-sim', {
     }
   },
 
-  // Comprehension: a known word reshapes its world — it flows to the word's place.
   _sayWord: function (word) {
     var w = this.lang.words[word];
     if (!w) return;
@@ -1526,20 +1469,19 @@ AFRAME.registerComponent('raindrop-sim', {
     this._speakWord(word);
   },
 
-  // Teaching: bind an armed word to a place. One Hebbian carve.
   _teachBind: function (word, x, z) {
     this.lang.learn(word, x, z);
     this._placeWordMarker(word, x, z);
     this.lastWord = { w: word, t: Date.now() };
     this.selectedWord = null;
-    this.kernel.feed(4);                                   // learning feels good
-    this.temp = Math.min(this.K.tMax, this.temp + 0.08);   // a little thrill
+    this.kernel.feed(4);                                       
+    this.temp = Math.min(this.K.tMax, this.temp + 0.08);   
     if (this.pendingVoice && this.pendingVoice.word === word) {
       this.lang.words[word].voice = { c: this.pendingVoice.c, d: this.pendingVoice.d };
       this.pendingVoice = null;
     }
     this._say('«' + word + '» … lært!', '#7dffb0', 2.8, 'happy');
-    this._speakWord(word);                                 // it repeats its new word
+    this._speakWord(word);                                     
     this._refreshChips(); this._refreshShelf();
     this._saveSoul();
   },
@@ -1565,7 +1507,6 @@ AFRAME.registerComponent('raindrop-sim', {
     if (u) m.label.object3D.rotation.set(0, Math.atan2(u.x - x, u.z - z), 0);
   },
 
-  // Word plaque or floor? Route a pinch in space.
   _onPinchPoint: function (p) {
     if (!p) return;
     for (var i = 0; i < this.plaques.length; i++) {
@@ -1576,7 +1517,6 @@ AFRAME.registerComponent('raindrop-sim', {
     if (p.y < 0.45 && this.selectedWord) this._teachBind(this.selectedWord, p.x, p.z);
   },
 
-  // What a word does when spoken (tapped/pinched).
   _plaqueAction: function (word) {
     if (this.quiz && this.quiz.phase === 'ask' && this.quiz.options.indexOf(word) !== -1) {
       this._answerQuiz(word); return;
@@ -1584,7 +1524,7 @@ AFRAME.registerComponent('raindrop-sim', {
     if (this.innateWords.indexOf(word) !== -1) { this._reflex(word); return; }
     var w = this.lang.words[word];
     if (w && w.s > 0.12) { this._sayWord(word); return; }
-    this.selectedWord = word; this.selT = 10;              // unknown: arm teaching
+    this.selectedWord = word; this.selT = 10;              
     this._say('vis mig «' + word + '»…', '#ffd27a', 3.0);
     this._refreshChips(); this._refreshShelf();
   },
@@ -1596,7 +1536,6 @@ AFRAME.registerComponent('raindrop-sim', {
     return { x: this._camVec.x, y: this._camVec.y, z: this._camVec.z };
   },
 
-  /* ── the in-AR word shelf ── */
   _buildShelf: function () {
     this._clearShelf();
     var u = this._userHeadPos();
@@ -1604,8 +1543,8 @@ AFRAME.registerComponent('raindrop-sim', {
     var dx = u.x - this.origin.x, dz = u.z - this.origin.z;
     var len = Math.sqrt(dx * dx + dz * dz) || 1;
     dx /= len; dz /= len;
-    var cx = this.origin.x + dx * 1.0, cz = this.origin.z + dz * 1.0;  // between you and the field
-    var px = -dz, pz = dx;                                             // shelf axis
+    var cx = this.origin.x + dx * 1.0, cz = this.origin.z + dz * 1.0;  
+    var px = -dz, pz = dx;                                             
     var yaw = Math.atan2(u.x - cx, u.z - cz);
     var self = this;
     var put = function (word, idx, n, y, innate) {
@@ -1655,7 +1594,6 @@ AFRAME.registerComponent('raindrop-sim', {
     }
   },
 
-  /* ── desktop word chips ── */
   _initLanguageUI: function () {
     var self = this;
     this._refreshChips();
@@ -1684,7 +1622,7 @@ AFRAME.registerComponent('raindrop-sim', {
     box.innerHTML = '';
     var self = this;
     var all = this.innateWords.concat(this.starterWords).concat(this.customWords);
-    for (var k in this.lang.words) {                       // words from past lives
+    for (var k in this.lang.words) {                       
       if (this.lang.words.hasOwnProperty(k) && all.indexOf(k) === -1) all.push(k);
     }
     all.forEach(function (word) {
@@ -1700,7 +1638,6 @@ AFRAME.registerComponent('raindrop-sim', {
     });
   },
 
-  /* ── the soul: everything it is, persisted across days ── */
   _saveSoul: function () {
     try {
       localStorage.setItem('raindrop_soul_v1', JSON.stringify({
@@ -1712,7 +1649,7 @@ AFRAME.registerComponent('raindrop-sim', {
         custom: this.customWords,
         scars: this.scars.map(function (s) { return { x: s.x, z: s.z }; })
       }));
-    } catch (e) { /* storage unavailable — it lives in the moment */ }
+    } catch (e) { }
   },
 
   _loadSoul: function () {
@@ -1739,9 +1676,6 @@ AFRAME.registerComponent('raindrop-sim', {
     this._say(born ? 'hej verden! ✨' : 'hej igen! 💧', '#9fdcff', 4.0, 'happy');
   },
 
-  /* ════════════════ THE EAR ════════════════
-     Mic -> pitch contour -> imitation. It hears MELODY, not phonemes —
-     prosody first, exactly how infants enter language. */
   _toggleEar: function () {
     var self = this, K = this.K;
     var btn = document.getElementById('btn-mic');
@@ -1774,13 +1708,20 @@ AFRAME.registerComponent('raindrop-sim', {
         var src = self.voice.ctx.createMediaStreamSource(stream);
         var an = self.voice.ctx.createAnalyser();
         an.fftSize = 2048;
-        src.connect(an);                     // analyser only — no feedback loop
+        src.connect(an);                     
+
+        // FIX: Dummy gain node routing to destination prevents WebAudio graph suspension
+        var dummyGain = self.voice.ctx.createGain();
+        dummyGain.gain.value = 0;
+        an.connect(dummyGain);
+        dummyGain.connect(self.voice.ctx.destination);
+
         self.ear.analyser = an;
         self.ear.buf = new Float32Array(1024);
         self.ear.voiced = []; self.ear.silence = 0;
+        self.ear.acc = 0; // FIX: Reset accumulator
         if (btn) btn.textContent = '🎤 Lyt: TIL';
         self._say('jeg lytter…', '#9fdcff', 2.2, 'question');
-        self.ear.timer = setInterval(function () { self._earTick(); }, K.earTick);
       } catch (e2) {
         stream.getTracks().forEach(function (t) { t.stop(); });
         fail('lyd-graf fejlede: ' + (e2 && e2.name));
@@ -1818,17 +1759,14 @@ AFRAME.registerComponent('raindrop-sim', {
     }
   },
 
-  // A melody arrived. Bind it, or babble it back.
   _onHeard: function (c, durMs) {
     var self = this;
     var echo = function () { self.voice.play({ contour: c, dur: durMs }, self._mood()); };
     if (this.selectedWord) {
-      // You spoke while teaching: this word will forever carry your melody.
       this.pendingVoice = { word: this.selectedWord, c: c, d: Math.min(1400, Math.max(380, durMs)) };
       this._say('♪ «' + this.selectedWord + '»…', '#9fdcff', 2.2);
       setTimeout(echo, 300);
     } else if (this.lastWord && Date.now() - this.lastWord.t < 8000) {
-      // Spoken right after a word event: attach the melody to that word.
       var w = this.lang.words[this.lastWord.w];
       if (w) {
         w.voice = { c: c, d: Math.min(1400, Math.max(380, durMs)) };
@@ -1838,15 +1776,11 @@ AFRAME.registerComponent('raindrop-sim', {
         this._saveSoul();
       }
     } else {
-      // Pure imitation play — it babbles your prosody back.
       this._say(this._pick(['…?', '♪!', 'øh?', 'sådan?']), '#bfe9ff', 1.8);
       setTimeout(echo, 350);
     }
   },
 
-  /* ════════════════ THE REAL ROOM ════════════════
-     Quest Space-Setup planes & room mesh -> resistance points.
-     The sofa finally pushes back. */
   _scanReal: function (time, dt) {
     var K = this.K;
     this._arHintT += dt;
@@ -1875,7 +1809,6 @@ AFRAME.registerComponent('raindrop-sim', {
       };
     };
 
-    // Planes: walls, tables, sofa tops — from Space Setup.
     if (frame.detectedPlanes) {
       frame.detectedPlanes.forEach(function (plane) {
         var lab = plane.semanticLabel || '';
@@ -1887,7 +1820,7 @@ AFRAME.registerComponent('raindrop-sim', {
         var poly = plane.polygon, world = [], i;
         for (i = 0; i < poly.length; i++) {
           var w = xform(m, poly[i]);
-          if (w.y > 2.1) return;             // ceiling fixtures: ignore whole plane
+          if (w.y > 2.1) return;             
           world.push(w);
         }
         for (i = 0; i < world.length; i++) {
@@ -1896,7 +1829,6 @@ AFRAME.registerComponent('raindrop-sim', {
         }
       });
     }
-    // Room mesh fallback: sample vertices at drop height.
     if (pts.length < 6 && frame.detectedMeshes) {
       frame.detectedMeshes.forEach(function (mesh) {
         var pose = null;
@@ -1913,7 +1845,6 @@ AFRAME.registerComponent('raindrop-sim', {
     }
 
     if (pts.length >= 6) {
-      // Thin to a 0.18 m grid so the field stays cheap.
       var grid = {}, thin = [];
       for (var i = 0; i < pts.length; i++) {
         var k = Math.round(pts[i].x / 0.18) + ',' + Math.round(pts[i].z / 0.18);
@@ -1923,7 +1854,6 @@ AFRAME.registerComponent('raindrop-sim', {
       this.realMode = true;
       this.obstacles = thin;
       if (first) {
-        // The virtual reeds dissolve — the room takes over.
         if (this.obstacleEls) this.obstacleEls.forEach(function (e) { e.parentNode && e.parentNode.removeChild(e); });
         this.obstacleEls = [];
         this._say('jeg kan mærke rummet!', '#7dffb0', 3.0, 'happy');
