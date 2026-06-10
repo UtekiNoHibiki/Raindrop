@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>💧 Raindrop — Quest Field Test</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.5.0/aframe.min.js"></script>
+
+<style>
+  :root{
+    var(--ink):       #061018;
+    --panel:      rgba(8, 20, 30, 0.72);
+    --hair:       rgba(120, 190, 230, 0.22);
+    --text:       #cfe9f5;
+    --muted:      #6f97ab;
+    --cool:       #2f7fd6;   
+    --hot:        #ff7a59;   
+    --good:       #46d6a0;
+    --warn:       #ff5c7a;
+    --mono:       ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  html,body{margin:0;height:100%;background:#061018;overflow:hidden;font-family:var(--mono);color:var(--text)}
+
+  #hud{
+    position:fixed; top:14px; left:14px; z-index:10; width:288px;
+    background:var(--panel); border:1px solid var(--hair); border-radius:14px;
+    padding:14px 14px 12px; backdrop-filter:blur(9px);
+    box-shadow:0 10px 40px rgba(0,0,0,.45);
+    user-select:none;
+  }
+  #hud h1{
+    margin:0 0 2px; font-size:15px; letter-spacing:.3px; font-weight:600;
+    display:flex; align-items:center; gap:7px;
+  }
+  #hud .sub{margin:0 0 11px; font-size:10.5px; color:var(--muted); line-height:1.45}
+  #hud .row{display:flex; justify-content:space-between; align-items:center; font-size:11px; margin:5px 0; color:var(--muted)}
+  #hud .row b{color:var(--text); font-weight:600}
+  .bar{height:6px; border-radius:4px; background:rgba(255,255,255,.07); overflow:hidden; margin-top:3px}
+  .bar > i{display:block; height:100%; width:0%; border-radius:4px; transition:width .12s linear}
+  .label{font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.7px; margin-top:9px}
+  .valves{display:flex; gap:7px; margin-top:4px}
+  .valves > div{flex:1}
+  .valves small{font-size:9px; color:var(--muted); display:block; text-align:center; margin-bottom:2px}
+  #btns{display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:13px}
+  #btns button{
+    font-family:var(--mono); font-size:10.5px; color:var(--text); cursor:pointer;
+    background:rgba(47,127,214,.14); border:1px solid var(--hair); border-radius:9px;
+    padding:8px 6px; transition:background .12s, transform .06s;
+  }
+  #btns button:hover{background:rgba(47,127,214,.28)}
+  #btns button:active{transform:translateY(1px)}
+  #btns button.wide{grid-column:1 / -1}
+  #btns button:focus-visible{outline:2px solid var(--cool); outline-offset:2px}
+  .hint{font-size:9.5px; color:var(--muted); margin-top:11px; line-height:1.5; border-top:1px solid var(--hair); padding-top:9px}
+  .drop{filter:drop-shadow(0 0 6px rgba(80,180,255,.8))}
+  @media (prefers-reduced-motion: reduce){ .bar > i{transition:none} }
+</style>
+</head>
+<body>
+
+<div id="hud" aria-live="polite">
+  <h1><span class="drop">💧</span> Raindrop · Field Test</h1>
+  <p class="sub">A fluidic mind in passthrough AR. It flows toward the well, around the reeds, and remembers pain.</p>
+
+  <div class="row"><span>State</span><b id="v-state">booting…</b></div>
+  <div class="row"><span>Distance to goal</span><b id="v-dist">–</b></div>
+
+  <div class="label">Mood · temperature</div>
+  <div class="bar"><i id="b-temp" style="background:var(--cool)"></i></div>
+  <div class="row" style="margin-top:3px"><span id="v-mood">crystallising (Harmony)</span><b id="v-temp">0.00</b></div>
+
+  <div class="label">Kernel · RaindropFlow.h</div>
+  <div class="valves">
+    <div><small>ENERGY</small><div class="bar"><i id="b-energy" style="background:var(--good)"></i></div></div>
+    <div><small>FEAR</small><div class="bar"><i id="b-fear" style="background:var(--good)"></i></div></div>
+    <div><small>FLOW</small><div class="bar"><i id="b-flow" style="background:var(--cool)"></i></div></div>
+  </div>
+
+  <div class="row" style="margin-top:11px"><span>Scars burned</span><b id="v-scars">0</b></div>
+
+  <div id="btns">
+    <button id="btn-goal">New goal</button>
+    <button id="btn-scatter">Scatter world</button>
+    <button id="btn-cool">Cool ❄</button>
+    <button id="btn-heat">Heat 🔥</button>
+    <button id="btn-reset" class="wide">Reset learning (clear scars + primordial kernel)</button>
+  </div>
+
+  <p class="hint">
+    <b>Quest:</b> tap <b>Enter AR</b> · open hand = push, pinch = pull.<br>
+    <b>Desktop:</b> click the floor to move the goal.
+  </p>
+</div>
+
+<a-scene
+  raindrop-sim
+  renderer="colorManagement: true; antialias: true; alpha: true"
+  webxr="optionalFeatures: hand-tracking, local-floor, hit-test, anchors, plane-detection; referenceSpaceType: local-floor"
+  vr-mode-ui="enterVRButtonText: Enter AR"
+  background="color: #07121c">
+
+  <a-assets></a-assets>
+
+  <a-entity light="type: ambient; color: #7fb0d0; intensity: 0.85"></a-entity>
+  <a-entity light="type: directional; color: #ffffff; intensity: 0.55" position="1 3 1.5"></a-entity>
+
+  <a-entity id="floor-grid" visible="true"
+    geometry="primitive: plane; width: 8; height: 8"
+    rotation="-90 0 0" position="0 0.001 0"
+    material="shader: flat; color: #0c2233; opacity: 0.9; side: double"></a-entity>
+  <a-entity id="floor-lines" visible="true" line-grid></a-entity>
+
+  <a-entity id="field"></a-entity>
+
+  <a-entity id="rig" position="0 0 0">
+    <a-camera id="cam" position="0 2.0 2.7" rotation="-24 0 0" look-controls="enabled: false" wasd-controls="enabled: false">
+      <a-entity id="hud3d" position="-0.17 -0.16 -0.55" rotation="0 0 0" visible="false">
+        <a-plane width="0.30" height="0.135" material="shader: flat; color: #04101a; opacity: 0.78; side: double"
+                 geometry="primitive: plane"></a-plane>
+        <a-text id="hud3d-text" value="" color="#cfe9f5" width="0.42"
+                align="left" anchor="left" baseline="center"
+                position="-0.135 0 0.001" font="dejavu"></a-text>
+      </a-entity>
+    </a-camera>
+  </a-entity>
+
+  <a-entity id="leftHand"  hand-tracking-controls="hand: left"></a-entity>
+  <a-entity id="rightHand" hand-tracking-controls="hand: right"></a-entity>
+
+  <a-entity id="leftCtl"  oculus-touch-controls="hand: left"></a-entity>
+  <a-entity id="rightCtl" oculus-touch-controls="hand: right"></a-entity>
+</a-scene>
+
+<script>
+AFRAME.registerComponent('line-grid', {
+  init: function () {
+    var g = new THREE.Group();
+    var mat = new THREE.LineBasicMaterial({ color: 0x1d4763, transparent: true, opacity: 0.6 });
+    var N = 8, step = 0.5, half = (N * step) / 2;
+    for (var i = 0; i <= N; i++) {
+      var p = -half + i * step;
+      var a = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-half, 0.002, p), new THREE.Vector3(half, 0.002, p)]);
+      var b = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(p, 0.002, -half), new THREE.Vector3(p, 0.002, half)]);
+      g.add(new THREE.Line(a, mat)); g.add(new THREE.Line(b, mat));
+    }
+    this.el.setObject3D('grid', g);
+  }
+});
+
+function RaindropKernel() {
+  this.valves = {
+    fearResistance:    1.0,    
+    curiosityPressure: 0.45,   
+    momentumInertia:   0.85    
+  };
+  this.internalEnergy = 100.0;
+  this.isResting = false;
+  // OPTIMIZED: Pre-allocate output object to stop garbage collection stutter in VR
+  this._out = { flowForward: 0.0, flowTurn: 0.0 };
+}
+
+RaindropKernel.prototype.processFlow = function (env) {
+  this._out.flowForward = 0.0;
+  this._out.flowTurn = 0.0;
+
+  if (this.internalEnergy <= 0 || this.isResting) return this._out;
+
+  var fear = this.valves.fearResistance;
+
+  var forwardFlow = (1.0 / Math.max(0.05, env.front * fear)) + this.valves.curiosityPressure;
+  var leftFlow  = 1.0 / Math.max(0.05, env.left  * fear);
+  var rightFlow = 1.0 / Math.max(0.05, env.right * fear);
+
+  this._out.flowForward = forwardFlow * this.valves.momentumInertia;
+  this._out.flowTurn    = rightFlow - leftFlow;        
+  this._out.flowForward += env.foodPull;
+
+  return this._out;
+};
+
+RaindropKernel.prototype.metabolize = function (dt, drainPerSec, healPerSec, restAt, wakeAt) {
+  if (this.isResting) {
+    this.internalEnergy = Math.min(100, this.internalEnergy + healPerSec * dt);
+    if (this.internalEnergy >= wakeAt) this.isResting = false; 
+  } else {
+    this.internalEnergy = Math.max(0, this.internalEnergy - drainPerSec * dt);
+    if (this.internalEnergy <= restAt) this.isResting = true;  
+  }
+};
+
+RaindropKernel.prototype.registerPain = function (intensity) {
+  this.valves.fearResistance += intensity;            
+  this.internalEnergy = Math.max(0, this.internalEnergy - intensity * 10);
+};
+
+RaindropKernel.prototype.feed = function (nourishment) {
+  this.internalEnergy = Math.min(100.0, this.internalEnergy + nourishment);
+};
+
+AFRAME.registerComponent('raindrop-sim', {
+  init: function () {
+    var self = this;
+
+    this.K = {
+      playRadius:   1.35,   
+      goalMinR:     0.65,   
+      goalMaxR:     1.45,
+      hardBoundary: 2.10,   
+      obstacleN:    6,      
+      obstacleRad:  0.12,
+      obstacleSig:  0.34,   
+      raindropRad:  0.075,
+      hoverY:       0.13,   
+
+      sensorRange:  0.55,   
+      probeAngle:   0.62,   
+
+      PMomentum:    0.85,   
+      PForce:       0.15,   
+      speedScale:   0.70,   
+      maxSpeed:     1.00,
+      kGoal:        1.5,    
+      kNoise:       2.0,    
+      maxTorque:    3.0,    
+      exploreDrive: 0.26,   
+
+      turnGain:     2.1,    
+      thrustGain:   0.80,   
+      painIntensity:0.35,   
+      fearMax:      4.0,    
+      fearHeal:     0.020,  
+
+      foodGravity:  0.45,   
+      guideGravity: 1.40,   
+      foodPullGain: 0.50,   
+
+      energyDrain:  0.55,   
+      restHeal:     9.0,    
+      restAt:       12,     
+      wakeAt:       96,     
+      feedAmount:   34,     
+
+      scarStrength: 0.55,
+      scarSig:      0.22,
+      scarSpacing:  0.18,   
+      scarCap:      24,
+
+      tMin:         0.05, tMax: 1.0, tStart: 0.40,
+      coolRate:     0.28,   
+      heatRate:     0.40,   
+      painHeat:     0.42,   
+      stuckLimit:   1.5,    
+
+      recoilSpeed:  0.60,
+
+      goalRadius:   0.18,
+      restDuration: 1.6,    
+
+      handSig:      0.28,   
+      handPush:     1.15,   
+      pushRadius:   0.42,   
+      kHand:        2.8,    
+      handThrust:   1.15,   
+      handYMin:     0.10, handYMax: 2.40, 
+
+      trailStep:    0.085,  
+      trailCap:     60,
+      trailDecay:   0.40    
+    };
+
+    // OPTIMIZED: Pre-allocate physics environments and vectors to prevent VR GC stutters
+    this._env = { front: 0.1, left: 0.1, right: 0.1, back: 0.1, foodPull: 0 };
+    this._handVec = new THREE.Vector3();
+    this._camVec = new THREE.Vector3();
+    this._camDir = new THREE.Vector3();
+    this._raycaster = new THREE.Raycaster();
+    this._ndc = new THREE.Vector2();
+    
+    // OPTIMIZED: Pre-calculate complex math multipliers
+    this.obstacleS2 = 2 * this.K.obstacleSig * this.K.obstacleSig;
+    this.scarS2 = 2 * this.K.scarSig * this.K.scarSig;
+    this.handS2 = 2 * this.K.handSig * this.K.handSig;
+
+    this.origin = { x: 0, z: 0 };          
+    this.pos    = { x: 0, z: 0 };
+    this.h      = Math.random() * Math.PI * 2; 
+    this.mom    = 0;                           
+    this.temp   = this.K.tStart;
+    this.kernel = new RaindropKernel();     
+    this.obstacles = [];                    
+    this.scars     = [];                    
+    this.trail     = [];                    
+    this.trailIdx  = 0;
+    this.lastTrail = { x: 0, z: 0 };
+    this.goal   = { x: 0.8, z: 0 };
+    this.bestD  = Infinity;
+    this.stuckT = 0;
+    this.mode   = 'seeking';                
+    this.restT  = 0;
+    this.res    = { l: 0, c: 0, r: 0 };     
+    this.hands  = {
+      left:  { active: false, pinching: false, x: 0, z: 0, y: 0 },
+      right: { active: false, pinching: false, x: 0, z: 0, y: 0 }
+    };
+    this.visAcc = 0;
+
+    this.fieldEl = document.getElementById('field');
+
+    this.dropEl = this._make('a-sphere', {
+      radius: this.K.raindropRad,
+      material: 'shader: standard; color: #6fd0ff; emissive: #2f9fe0; emissiveIntensity: 1.4; opacity: 0.92; transparent: true; metalness: 0.1; roughness: 0.25'
+    });
+    this.auraEl = this._make('a-sphere', {
+      radius: this.K.raindropRad * 2.1,
+      material: 'shader: standard; color: #4fb8ff; emissive: #2f8fd0; emissiveIntensity: 0.6; opacity: 0.16; transparent: true; metalness: 0; roughness: 1; side: double'
+    });
+
+    this.goalRing = this._make('a-torus', {
+      radius: 0.16, 'radius-tubular': 0.012,
+      rotation: '-90 0 0',
+      material: 'shader: flat; color: #ffd27a; opacity: 0.9; transparent: true; side: double'
+    });
+    this.goalGlow = this._make('a-cylinder', {
+      radius: 0.10, height: 0.5,
+      material: 'shader: flat; color: #ffcf6a; opacity: 0.12; transparent: true; side: double'
+    });
+
+    this.whiskerL = this._make('a-entity', { line: 'start: 0 0 0; end: 0 0 0; color: #46d6a0; opacity: 0.55' });
+    this.whiskerC = this._make('a-entity', { line: 'start: 0 0 0; end: 0 0 0; color: #46d6a0; opacity: 0.7' });
+    this.whiskerR = this._make('a-entity', { line: 'start: 0 0 0; end: 0 0 0; color: #46d6a0; opacity: 0.55' });
+
+    for (var t = 0; t < this.K.trailCap; t++) {
+      var d = this._make('a-circle', {
+        radius: 0.045, rotation: '-90 0 0',
+        material: 'shader: flat; color: #2f9fe0; opacity: 0; transparent: true; side: double'
+      });
+      d.object3D.position.set(0, 0.004, 0);
+      this.trail.push({ el: d, op: 0 });
+    }
+
+    this._scatterWorld();      
+    this._resetDrop();
+
+    var sceneEl = this.el;
+
+    sceneEl.addEventListener('enter-vr', function () {
+      var ar = sceneEl.is('ar-mode');
+      self._showDesktopScaffold(!ar);
+      document.getElementById('hud3d').setAttribute('visible', ar);
+      if (ar) self._anchorInFront();
+    });
+    sceneEl.addEventListener('exit-vr', function () {
+      self._showDesktopScaffold(true);
+      document.getElementById('hud3d').setAttribute('visible', false);
+      self.origin = { x: 0, z: 0 };
+      self._scatterWorld();
+      self._resetDrop();
+    });
+
+    ['leftHand', 'rightHand'].forEach(function (id) {
+      var key = (id === 'leftHand') ? 'left' : 'right';
+      var el = document.getElementById(id);
+      el.addEventListener('pinchstarted', function () { self.hands[key].pinching = true; });
+      el.addEventListener('pinchended',   function () { self.hands[key].pinching = false; });
+      el.addEventListener('controllerconnected',    function () { self.hands[key].active = true; });
+      el.addEventListener('controllerdisconnected', function () { self.hands[key].active = false; self.hands[key].pinching = false; });
+    });
+
+    ['leftCtl', 'rightCtl'].forEach(function (id) {
+      var el = document.getElementById(id);
+      el.addEventListener('triggerdown', function () {
+        var hit = self._controllerFloorHit(el);
+        if (hit) self._placeGoal(hit.x, hit.z);
+      });
+    });
+
+    window.addEventListener('click', function (ev) {
+      if (sceneEl.is('vr-mode') || sceneEl.is('ar-mode')) return;
+      if (ev.target.closest('#hud')) return;
+      var hit = self._screenFloorHit(ev.clientX, ev.clientY);
+      if (hit) self._placeGoal(hit.x, hit.z);
+    });
+
+    var b = function (id, fn) { var e = document.getElementById(id); if (e) e.addEventListener('click', fn); };
+    b('btn-goal',    function () { self._placeGoal(); });
+    b('btn-scatter', function () { self._scatterWorld(); self._resetDrop(); });
+    b('btn-cool',    function () { self.temp = Math.max(self.K.tMin, self.temp - 0.3); });
+    b('btn-heat',    function () { self.temp = Math.min(self.K.tMax, self.temp + 0.3); });
+    b('btn-reset',   function () { self._resetLearning(); });
+    
+    window.addEventListener('keydown', function (e) {
+      if (e.key === 'g') self._placeGoal();
+      if (e.key === 'r') self._resetLearning();
+      if (e.key === 's') { self._scatterWorld(); self._resetDrop(); }
+    });
+  },
+
+  tick: function (time, dtMs) {
+    var K = this.K;
+    var dt = Math.min((dtMs || 16) / 1000, 0.05);  
+    if (dt <= 0) return;
+
+    this._readHands();
+
+    if (this.mode === 'resting') {
+      this.mom *= 0.85;
+      this.pos.x += Math.cos(this.h) * this.mom * K.speedScale * dt;
+      this.pos.z += Math.sin(this.h) * this.mom * K.speedScale * dt;
+      this.restT -= dt;
+      if (this.restT <= 0) { this.mode = 'seeking'; this._placeGoal(); }
+      this._heal(dt);
+      this._render(dt, time);
+      return;
+    }
+
+    this.kernel.metabolize(dt, K.energyDrain, K.restHeal, K.restAt, K.wakeAt);
+    if (this.kernel.isResting) {
+      this.mom *= 0.90;                    
+      this._heal(dt);
+      this._render(dt, time);
+      return;
+    }
+
+    var dCx = Math.cos(this.h),               dCz = Math.sin(this.h);
+    var dLx = Math.cos(this.h + K.probeAngle), dLz = Math.sin(this.h + K.probeAngle);
+    var dRx = Math.cos(this.h - K.probeAngle), dRz = Math.sin(this.h - K.probeAngle);
+
+    var cx = this.pos.x + dCx * K.sensorRange, cz = this.pos.z + dCz * K.sensorRange;
+    var lx = this.pos.x + dLx * K.sensorRange, lz = this.pos.z + dLz * K.sensorRange;
+    var rx = this.pos.x + dRx * K.sensorRange, rz = this.pos.z + dRz * K.sensorRange;
+
+    var frontRes = this._resistanceAt(cx, cz);
+    var leftRes  = this._resistanceAt(lx, lz);
+    var rightRes = this._resistanceAt(rx, rz);
+    this.res.l = leftRes; this.res.c = frontRes; this.res.r = rightRes;
+
+    var gx = this.goal.x - this.pos.x, gz = this.goal.z - this.pos.z;
+    var distGoal = Math.sqrt(gx * gx + gz * gz);
+    var goalAngle = Math.atan2(gz, gx);
+    var e = this._wrap(goalAngle - this.h);
+    var goalGate = Math.max(0, 1 - this._clamp01(frontRes)); 
+
+    // OPTIMIZED: Using pre-allocated _env object
+    var env = this._env;
+    env.front = 1.0 + frontRes;
+    env.left = 1.0 + leftRes;
+    env.right = 1.0 + rightRes;
+    env.back = 1.0;
+    env.foodPull = 0;
+
+    var scent = K.foodGravity * this._clamp01(1.6 - distGoal * 0.45);
+    if (Math.abs(e) < K.probeAngle * 0.5)  env.front = Math.max(0.15, env.front - scent);
+    else if (e > 0 && e <  Math.PI * 0.75) env.left  = Math.max(0.15, env.left  - scent);
+    else if (e < 0 && e > -Math.PI * 0.75) env.right = Math.max(0.15, env.right - scent);
+
+    var pinch = this._activePinch(), he = 0;
+    if (pinch) {
+      he = this._wrap(Math.atan2(pinch.z - this.pos.z, pinch.x - this.pos.x) - this.h);
+      if (Math.abs(he) < K.probeAngle * 0.5) env.front = Math.max(0.10, env.front - K.guideGravity);
+      else if (he > 0)                       env.left  = Math.max(0.10, env.left  - K.guideGravity);
+      else                                   env.right = Math.max(0.10, env.right - K.guideGravity);
+      env.foodPull += K.handThrust * Math.max(0, Math.cos(he));
+    }
+
+    env.foodPull += K.foodPullGain * Math.max(0, Math.cos(e)) * goalGate;
+
+    var flow = this.kernel.processFlow(env);
+
+    var torque = -flow.flowTurn * K.turnGain
+               +  K.kGoal * e * goalGate
+               + (pinch ? K.kHand * he : 0)
+               +  K.kNoise * this.temp * this._gauss();
+    torque = this._clamp(torque, -K.maxTorque, K.maxTorque);
+    this.h = this._wrap(this.h + torque * dt);
+
+    var thrust = flow.flowForward * K.thrustGain + K.exploreDrive * this.temp;
+    if (thrust < 0) thrust = 0;
+
+    this.mom = this.mom * K.PMomentum + thrust * K.PForce;
+    var spd = this.mom * K.speedScale;
+    var maxStep = K.maxSpeed * dt;
+    var stepLen = spd * dt;
+    if (stepLen > maxStep) stepLen = maxStep;
+    this.pos.x += Math.cos(this.h) * stepLen;
+    this.pos.z += Math.sin(this.h) * stepLen;
+
+    this._handShove(dt);
+
+    var ox = this.pos.x - this.origin.x, oz = this.pos.z - this.origin.z;
+    var rad2 = ox * ox + oz * oz;
+    if (rad2 > K.hardBoundary * K.hardBoundary) {
+      var rad = Math.sqrt(rad2);
+      this.pos.x = this.origin.x + ox / rad * K.hardBoundary;
+      this.pos.z = this.origin.z + oz / rad * K.hardBoundary;
+      this.h = Math.atan2(-oz, -ox);   
+      this.mom *= 0.5;
+    }
+
+    this._checkPain();
+
+    if (distGoal < this.bestD - 0.01) {
+      this.bestD = distGoal; this.stuckT = 0;
+      this.temp = Math.max(K.tMin, this.temp - K.coolRate * dt);
+    } else {
+      this.stuckT += dt;
+      if (this.stuckT > K.stuckLimit) this.temp = Math.min(K.tMax, this.temp + K.heatRate * dt);
+    }
+
+    if (distGoal < K.goalRadius) {
+      this.kernel.feed(K.feedAmount);
+      this.mode = 'resting';
+      this.restT = K.restDuration;
+      this.temp = Math.max(K.tMin, this.temp * 0.4);
+    }
+
+    this._dropTrail();
+    this._heal(dt);
+    this._render(dt, time);
+  },
+
+  _resistanceAt: function (x, z) {
+    var K = this.K, r = 0, i, d2;
+
+    // OPTIMIZED: Pre-calculated S2 values
+    for (i = 0; i < this.obstacles.length; i++) {
+      var o = this.obstacles[i];
+      d2 = (x - o.x) * (x - o.x) + (z - o.z) * (z - o.z);
+      r += Math.exp(-d2 / this.obstacleS2);
+    }
+    
+    for (i = 0; i < this.scars.length; i++) {
+      var sc = this.scars[i];
+      d2 = (x - sc.x) * (x - sc.x) + (z - sc.z) * (z - sc.z);
+      r += K.scarStrength * Math.exp(-d2 / this.scarS2);
+    }
+    
+    var hk = ['left', 'right'];
+    for (i = 0; i < 2; i++) {
+      var hnd = this.hands[hk[i]];
+      if (hnd.active && !hnd.pinching) {
+        d2 = (x - hnd.x) * (x - hnd.x) + (z - hnd.z) * (z - hnd.z);
+        r += K.handPush * Math.exp(-d2 / this.handS2);
+      }
+    }
+    
+    var ox = x - this.origin.x, oz = z - this.origin.z;
+    var rad = Math.sqrt(ox * ox + oz * oz);
+    if (rad > K.playRadius) r += (rad - K.playRadius) * 1.4;
+
+    return this._clamp(r, 0, 2.0);
+  },
+
+  _checkPain: function () {
+    var K = this.K;
+    var painDist = K.obstacleRad + K.raindropRad + 0.015;
+    var painDistSq = painDist * painDist;
+
+    for (var i = 0; i < this.obstacles.length; i++) {
+      var o = this.obstacles[i];
+      var dx = this.pos.x - o.x, dz = this.pos.z - o.z;
+      var d2 = dx * dx + dz * dz;
+      
+      // OPTIMIZED: Fast squared distance check avoids Math.sqrt most frames
+      if (d2 < painDistSq) {
+        var d = Math.sqrt(d2);
+        var nx = (d > 1e-4) ? dx / d : Math.cos(this.h + Math.PI);
+        var nz = (d > 1e-4) ? dz / d : Math.sin(this.h + Math.PI);
+        this.pos.x = o.x + nx * (painDist + 0.005);
+        this.pos.z = o.z + nz * (painDist + 0.005);
+
+        this.kernel.registerPain(K.painIntensity);
+        if (this.kernel.valves.fearResistance > K.fearMax) {
+          this.kernel.valves.fearResistance = K.fearMax;
+        }
+
+        this._burnScar(this.pos.x, this.pos.z);
+
+        this.mom = -K.recoilSpeed;                 
+        this.h = Math.atan2(nz, nx);               
+        this.temp = Math.min(K.tMax, this.temp + K.painHeat); 
+        this.bestD = Infinity; this.stuckT = 0;
+        break;
+      }
+    }
+  },
+
+  _burnScar: function (x, z) {
+    var K = this.K, i;
+    for (i = 0; i < this.scars.length; i++) {
+      var dx = this.scars[i].x - x, dz = this.scars[i].z - z;
+      if (dx * dx + dz * dz < K.scarSpacing * K.scarSpacing) return; 
+    }
+    var el;
+    if (this.scars.length >= K.scarCap) {
+      var old = this.scars.shift();      
+      el = old.el;
+    } else {
+      el = this._make('a-circle', {
+        radius: 0.06, rotation: '-90 0 0',
+        material: 'shader: flat; color: #ff5c4a; opacity: 0.32; transparent: true; side: double'
+      });
+    }
+    el.object3D.position.set(x, 0.006, z);
+    this.scars.push({ x: x, z: z, el: el });
+  },
+
+  _readHands: function () {
+    var K = this.K;
+    var ids = { left: 'leftHand', right: 'rightHand' };
+    var keys = ['left', 'right'];
+    for (var i = 0; i < 2; i++) {
+      var k = keys[i];
+      var el = document.getElementById(ids[k]);
+      var h = this.hands[k];
+      if (!el || !el.object3D) { h.active = false; continue; }
+      
+      // OPTIMIZED: Pre-allocated vector
+      el.object3D.getWorldPosition(this._handVec);
+      var p = this._handVec;
+      
+      var plausible = (Math.abs(p.x) + Math.abs(p.y) + Math.abs(p.z) > 0.001) &&
+                      (p.y > K.handYMin && p.y < K.handYMax);
+      h.active = plausible;   
+      h.x = p.x; h.y = p.y; h.z = p.z;
+    }
+  },
+
+  _activePinch: function () {
+    var best = null, bestD = Infinity, keys = ['left', 'right'];
+    for (var i = 0; i < 2; i++) {
+      var h = this.hands[keys[i]];
+      if (h.active && h.pinching) {
+        var dx = h.x - this.pos.x, dz = h.z - this.pos.z;
+        var d = dx * dx + dz * dz;
+        if (d < bestD) { bestD = d; best = h; }
+      }
+    }
+    return best;
+  },
+
+  _handShove: function (dt) {
+    var K = this.K, keys = ['left', 'right'];
+    for (var i = 0; i < 2; i++) {
+      var h = this.hands[keys[i]];
+      if (!h.active || h.pinching) continue;
+      var dx = this.pos.x - h.x, dz = this.pos.z - h.z;
+      var d2 = dx * dx + dz * dz;
+      if (d2 < K.pushRadius * K.pushRadius && d2 > 1e-8) {
+        var d = Math.sqrt(d2);
+        var f = (1 - d / K.pushRadius) * 0.9 * dt;   
+        this.pos.x += (dx / d) * f;
+        this.pos.z += (dz / d) * f;
+      }
+    }
+  },
+
+  _render: function (dt, time) {
+    var K = this.K, y = K.hoverY;
+    var t = time * 0.001;
+
+    var bob = Math.sin(t * 2.2) * 0.006;
+    this.dropEl.object3D.position.set(this.pos.x, y + bob, this.pos.z);
+    this.auraEl.object3D.position.set(this.pos.x, y + bob, this.pos.z);
+
+    this.goalRing.object3D.position.set(this.goal.x, 0.02, this.goal.z);
+    this.goalGlow.object3D.position.set(this.goal.x, 0.25, this.goal.z);
+    var pulse = 1 + Math.sin(t * 3) * 0.06;
+    this.goalRing.object3D.scale.set(pulse, pulse, pulse);
+
+    for (var i = 0; i < this.trail.length; i++) {
+      var seg = this.trail[i];
+      if (seg.op > 0) {
+        seg.op = Math.max(0, seg.op - K.trailDecay * dt);
+        seg.el.setAttribute('material', 'opacity', seg.op * 0.5);
+      }
+    }
+
+    this._whisker(this.whiskerC, this.h,              this.res.c);
+    this._whisker(this.whiskerL, this.h + K.probeAngle, this.res.l);
+    this._whisker(this.whiskerR, this.h - K.probeAngle, this.res.r);
+
+    this.visAcc += dt;
+    if (this.visAcc < 0.1) return;
+    this.visAcc = 0;
+
+    var hot = this._clamp01((this.temp - K.tMin) / (K.tMax - K.tMin));
+    var col = this._lerpColor(0x6fd0ff, 0xff7a59, hot);
+    var emi = this._lerpColor(0x2f9fe0, 0xff5a39, hot);
+    this.dropEl.setAttribute('material', 'color', col);
+    this.dropEl.setAttribute('material', 'emissive', emi);
+    var glow = this.kernel.isResting ? 0.35 : (1.2 + hot * 1.4);
+    this.dropEl.setAttribute('material', 'emissiveIntensity', glow.toFixed(2));
+    var jitter = 1 + hot * Math.sin(t * 22) * 0.10;     
+    this.dropEl.object3D.scale.set(jitter, jitter, jitter);
+
+    this._updateHUD(hot);
+  },
+
+  _whisker: function (el, ang, res) {
+    var K = this.K, y = K.hoverY;
+    var ex = this.pos.x + Math.cos(ang) * K.sensorRange;
+    var ez = this.pos.z + Math.sin(ang) * K.sensorRange;
+    var hot = this._clamp01(res / 1.2);
+    var c = this._lerpColor(0x46d6a0, 0xff5c7a, hot);  
+    el.setAttribute('line', {
+      start: this.pos.x + ' ' + y + ' ' + this.pos.z,
+      end:   ex + ' ' + y + ' ' + ez,
+      color: c
+    });
+  },
+
+  _updateHUD: function (hot) {
+    var dist = Math.sqrt((this.goal.x - this.pos.x) * (this.goal.x - this.pos.x) +
+                         (this.goal.z - this.pos.z) * (this.goal.z - this.pos.z));
+    var set = function (id, txt) { var e = document.getElementById(id); if (e) e.textContent = txt; };
+    var width = function (id, v, color) {
+      var e = document.getElementById(id); if (!e) return;
+      e.style.width = (this._clamp01(v) * 100).toFixed(0) + '%';
+      if (color) e.style.background = color;
+    }.bind(this);
+
+    set('v-state', this.kernel.isResting ? 'sleeping · recharging'
+                  : (this.mode === 'resting' ? 'resting at well' : 'seeking'));
+    set('v-dist', dist.toFixed(2) + ' m');
+    set('v-temp', this.temp.toFixed(2));
+    set('v-scars', '' + this.scars.length);
+    set('v-mood', hot > 0.6 ? 'exploring (Truth)' : (hot > 0.3 ? 'restless' : 'crystallising (Harmony)'));
+
+    var moodColor = this._lerpColorCss(0x2f7fd6, 0xff7a59, hot);
+    width('b-temp', hot, moodColor);
+    var en  = this.kernel.internalEnergy / 100;
+    var fear = (this.kernel.valves.fearResistance - 1) / (this.K.fearMax - 1);
+    width('b-energy', en,  en > 0.30  ? 'var(--good)' : 'var(--warn)');
+    width('b-fear',   fear, fear < 0.5 ? 'var(--good)' : 'var(--warn)');
+    width('b-flow',   this.mom, 'var(--cool)');
+
+    var p3 = document.getElementById('hud3d-text');
+    if (p3) {
+      p3.setAttribute('value',
+        (this.kernel.isResting ? 'SLEEPING' : this.mode === 'resting' ? 'RESTING' : 'SEEKING') +
+        '   ' + dist.toFixed(2) + 'm\n' +
+        'mood ' + (hot > 0.6 ? 'EXPLORE' : hot > 0.3 ? 'restless' : 'HARMONY') +
+        '  t=' + this.temp.toFixed(2) + '\n' +
+        'fear ' + this.kernel.valves.fearResistance.toFixed(2) +
+        '  energy ' + Math.round(this.kernel.internalEnergy) + '%\n' +
+        'scars ' + this.scars.length);
+    }
+  },
+
+  _dropTrail: function () {
+    var dx = this.pos.x - this.lastTrail.x, dz = this.pos.z - this.lastTrail.z;
+    if (dx * dx + dz * dz < this.K.trailStep * this.K.trailStep) return;
+    this.lastTrail = { x: this.pos.x, z: this.pos.z };
+    var seg = this.trail[this.trailIdx];
+    seg.el.object3D.position.set(this.pos.x, 0.004, this.pos.z);
+    seg.op = 1;
+    seg.el.setAttribute('material', 'opacity', 0.5);
+    this.trailIdx = (this.trailIdx + 1) % this.trail.length;
+  },
+
+  _scatterWorld: function () {
+    var K = this.K, i;
+    if (this.obstacleEls) { this.obstacleEls.forEach(function (e) { e.parentNode && e.parentNode.removeChild(e); }); }
+    this.obstacleEls = [];
+    this.obstacles = [];
+    for (i = 0; i < K.obstacleN; i++) {
+      var ang = (i / K.obstacleN) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
+      var rr = (0.45 + Math.random() * 0.55) * K.playRadius;
+      var ox = this.origin.x + Math.cos(ang) * rr;
+      var oz = this.origin.z + Math.sin(ang) * rr;
+      this.obstacles.push({ x: ox, z: oz });
+      var ht = 0.4 + Math.random() * 0.35;
+      var reed = this._make('a-cylinder', {
+        radius: K.obstacleRad, height: ht,
+        material: 'shader: standard; color: #3fae7a; emissive: #1f6e4a; emissiveIntensity: 0.4; opacity: 0.78; transparent: true; metalness: 0; roughness: 0.7'
+      });
+      reed.object3D.position.set(ox, ht / 2, oz);
+      this.obstacleEls.push(reed);
+    }
+    this._placeGoal();
+  },
+
+  _resetDrop: function () {
+    this.pos = { x: this.origin.x, z: this.origin.z };
+    this.h = Math.random() * Math.PI * 2;
+    this.mom = 0;
+    this.temp = this.K.tStart;
+    this.mode = 'seeking';
+    this.lastTrail = { x: this.pos.x, z: this.pos.z };
+    this.bestD = Infinity; this.stuckT = 0;
+    for (var i = 0; i < this.trail.length; i++) { this.trail[i].op = 0; this.trail[i].el.setAttribute('material', 'opacity', 0); }
+  },
+
+  _resetLearning: function () {
+    this.kernel.valves.fearResistance = 1.0;   
+    this.kernel.internalEnergy = 100;
+    this.kernel.isResting = false;
+    for (var i = 0; i < this.scars.length; i++) {
+      this.scars[i].el.parentNode && this.scars[i].el.parentNode.removeChild(this.scars[i].el);
+    }
+    this.scars = [];
+    this.temp = this.K.tStart;
+  },
+
+  _placeGoal: function (x, z) {
+    var K = this.K;
+    if (typeof x === 'number' && typeof z === 'number') {
+      this.goal = { x: x, z: z };
+    } else {
+      for (var tries = 0; tries < 24; tries++) {
+        var ang = Math.random() * Math.PI * 2;
+        var rr = K.goalMinR + Math.random() * (K.goalMaxR - K.goalMinR);
+        var gx = this.origin.x + Math.cos(ang) * rr;
+        var gz = this.origin.z + Math.sin(ang) * rr;
+        var ok = true;
+        for (var i = 0; i < this.obstacles.length; i++) {
+          var dx = gx - this.obstacles[i].x, dz = gz - this.obstacles[i].z;
+          if (dx * dx + dz * dz < 0.09) { ok = false; break; }
+        }
+        if (ok) { this.goal = { x: gx, z: gz }; break; }
+      }
+    }
+    this.bestD = Infinity; this.stuckT = 0;
+  },
+
+  _heal: function (dt) {
+    var f = this.kernel.valves.fearResistance;
+    this.kernel.valves.fearResistance = Math.max(1.0, f - this.K.fearHeal * dt * (f - 1.0));
+  },
+
+  _anchorInFront: function () {
+    var cam = document.getElementById('cam');
+    if (!cam || !cam.object3D) return;
+    
+    // OPTIMIZED: Pre-allocated vectors
+    cam.object3D.getWorldPosition(this._camVec);
+    cam.object3D.getWorldDirection(this._camDir); 
+    
+    var fwdX = -this._camDir.x;
+    var fwdZ = -this._camDir.z;
+    var lenSq = fwdX * fwdX + fwdZ * fwdZ;
+    
+    if (lenSq < 1e-4) { fwdX = 0; fwdZ = -1; lenSq = 1.0; }
+    var len = Math.sqrt(lenSq);
+    
+    this.origin = { x: this._camVec.x + (fwdX / len) * 1.45, z: this._camVec.z + (fwdZ / len) * 1.45 };
+    this._scatterWorld();
+    this._resetDrop();
+  },
+
+  _screenFloorHit: function (cx, cy) {
+    var cam = this.el.camera;
+    if (!cam) return null;
+    
+    // OPTIMIZED: Pre-allocated Raycaster and NDC vectors
+    this._ndc.set((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
+    this._raycaster.setFromCamera(this._ndc, cam);
+    return this._intersectFloor(this._raycaster.ray.origin, this._raycaster.ray.direction);
+  },
+
+  _controllerFloorHit: function (el) {
+    if (!el || !el.object3D) return null;
+    
+    // OPTIMIZED: Pre-allocated vectors for controller checks
+    el.object3D.getWorldPosition(this._handVec);
+    el.object3D.getWorldDirection(this._camDir); 
+    
+    var dirX = -this._camDir.x;
+    var dirY = -this._camDir.y;
+    var dirZ = -this._camDir.z;
+    
+    return this._intersectFloor(this._handVec, {x: dirX, y: dirY, z: dirZ});
+  },
+
+  _intersectFloor: function (origin, dir) {
+    if (Math.abs(dir.y) < 1e-5) return null;
+    var t = -origin.y / dir.y;
+    if (t <= 0) return null;
+    return { x: origin.x + dir.x * t, z: origin.z + dir.z * t };
+  },
+
+  _showDesktopScaffold: function (show) {
+    var g = document.getElementById('floor-grid');
+    var l = document.getElementById('floor-lines');
+    if (g) g.setAttribute('visible', show);
+    if (l) l.setAttribute('visible', show);
+  },
+
+  _make: function (tag, attrs) {
+    var el = document.createElement(tag);
+    for (var k in attrs) { if (attrs.hasOwnProperty(k)) el.setAttribute(k, attrs[k]); }
+    this.fieldEl.appendChild(el);
+    return el;
+  },
+  _wrap: function (a) { while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2; return a; },
+  _clamp: function (v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); },
+  _clamp01: function (v) { return v < 0 ? 0 : (v > 1 ? 1 : v); },
+  _gauss: function () { 
+    return (Math.random() + Math.random() + Math.random() - 1.5) * 0.9;
+  },
+  _lerpColor: function (a, b, t) {
+    t = this._clamp01(t);
+    var ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+    var br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+    var r = Math.round(ar + (br - ar) * t), g = Math.round(ag + (bg - ag) * t), bl = Math.round(ab + (bb - ab) * t);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+  },
+  _lerpColorCss: function (a, b, t) { return this._lerpColor(a, b, t); }
+});
+</script>
+</body>
+</html>
